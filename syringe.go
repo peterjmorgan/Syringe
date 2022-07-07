@@ -114,3 +114,18 @@ func (s *Syringe) IdentifyMainBranch(projectId int) (*gitlab.Branch, error) {
 	}
 	return ret, retErr
 }
+
+func (s *Syringe) GetFileTreeFromProject(projectId int) ([]*gitlab.TreeNode, error) {
+	mainBranch, err := s.IdentifyMainBranch(projectId)
+	if err != nil {
+		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
+		return nil, err
+	}
+
+	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
+	if err != nil {
+		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
+		return nil, err
+	}
+	return projectFiles, nil
+}

@@ -161,6 +161,7 @@ func TestSyringe_IdentifyMainBranch(t *testing.T) {
 		wantErr bool
 	}{
 		{"one", fields{s.Gitlab}, args{31479523}, nil, false},
+		{"two", fields{s.Gitlab}, args{0}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -174,6 +175,44 @@ func TestSyringe_IdentifyMainBranch(t *testing.T) {
 			}
 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
 				t.Errorf("IdentifyMainBranch() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSyringe_GetFileTreeFromProject(t *testing.T) {
+	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
+	type fields struct {
+		Gitlab *gitlab.Client
+	}
+	type args struct {
+		projectId int
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    []*gitlab.TreeNode
+		wantLen int
+		wantErr bool
+	}{
+		{"one", fields{s.Gitlab}, args{31479523}, nil, 5, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Syringe{
+				Gitlab: tt.fields.Gitlab,
+			}
+			got, err := s.GetFileTreeFromProject(tt.args.projectId)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetFileTreeFromProject() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+				t.Errorf("GetFileTreeFromProject() got = %v, want %v", got, tt.want)
+			}
+			if len(got) != tt.wantLen {
+				t.Errorf("GetFileTreeFromProject() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
