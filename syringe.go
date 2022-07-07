@@ -35,3 +35,12 @@ func NewSyringe(gitlabToken string) (*Syringe, error) {
 
 	return &Syringe{Gitlab: gitlabClient}, nil
 }
+
+func (s *Syringe) ListProjects() ([]*gitlab.Project, error) {
+	projects, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(true)})
+	if err != nil {
+		log.Errorf("Failed to list gitlab projects: %v\n", err)
+		return nil, err
+	}
+	return projects, nil
+}
