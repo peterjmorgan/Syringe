@@ -44,3 +44,25 @@ func (s *Syringe) ListProjects() ([]*gitlab.Project, error) {
 	}
 	return projects, nil
 }
+
+func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
+	branches, _, err := s.Gitlab.Branches.ListBranches(projectId, &gitlab.ListBranchesOptions{})
+	if err != nil {
+		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
+		return nil, err
+	}
+	return branches, nil
+}
+
+func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, error) {
+	files, _, err := s.Gitlab.Repositories.ListTree(projectId, &gitlab.ListTreeOptions{
+		Path:      gitlab.String("/"),
+		Ref:       gitlab.String(branch),
+		Recursive: gitlab.Bool(true),
+	})
+	if err != nil {
+		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
+		return nil, err
+	}
+	return files, nil
+}
