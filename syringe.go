@@ -66,3 +66,51 @@ func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, e
 	}
 	return files, nil
 }
+
+func getMainBranchSlice() []string {
+	return []string{
+		"master",
+		"main",
+	}
+}
+
+func (s *Syringe) IdentifyMainBranch(projectId int) (*gitlab.Branch, error) {
+	branches, err := s.ListBranches(projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	mainBranchSlice := getMainBranchSlice()
+
+	foundBranches := make([]*gitlab.Branch, 0)
+	for _, branch := range branches {
+		for _, mainBranchName := range mainBranchSlice {
+			if branch.Name == mainBranchName {
+				foundBranches = append(foundBranches, branch)
+			}
+		}
+	}
+
+	var ret *gitlab.Branch
+	var retErr error
+
+	switch len(foundBranches) {
+	case 0:
+		ret = nil
+		retErr = fmt.Errorf("No main branch found: %v\n", projectId)
+	case 1:
+		ret = foundBranches[0]
+		retErr = nil
+	case 2:
+		for _, branch := range foundBranches {
+			if branch.Name == "master" {
+				ret = branch
+				retErr = nil
+			}
+		}
+	default:
+		ret = nil
+		retErr = fmt.Errorf("IdentifyMainBranch error: shouldn't happen %v\n", projectId)
+	}
+	return ret, retErr
+}
