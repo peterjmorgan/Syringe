@@ -136,10 +136,44 @@ func TestSyringe_ListBranches(t *testing.T) {
 				return
 			}
 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-				t.Errorf("ListFiles() got = %v, want %v", got, tt.want)
+				t.Errorf("ListBranches() got = %v, want %v", got, tt.want)
 			}
 			if len(got) != tt.len {
-				t.Errorf("ListFiles() got = %v, want %v", len(got), tt.len)
+				t.Errorf("ListBranches() got = %v, want %v", len(got), tt.len)
+			}
+		})
+	}
+}
+
+func TestSyringe_IdentifyMainBranch(t *testing.T) {
+	s, _ := NewSyringe("***REMOVED***")
+	type fields struct {
+		Gitlab *gitlab.Client
+	}
+	type args struct {
+		projectId int
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *gitlab.Branch
+		wantErr bool
+	}{
+		{"one", fields{s.Gitlab}, args{31479523}, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Syringe{
+				Gitlab: tt.fields.Gitlab,
+			}
+			got, err := s.IdentifyMainBranch(tt.args.projectId)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("IdentifyMainBranch() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+				t.Errorf("IdentifyMainBranch() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
