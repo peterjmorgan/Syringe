@@ -6,7 +6,7 @@ type GitlabFile struct {
 	Name    string
 	Path    string
 	Id      string
-	Content string
+	Content []byte
 }
 
 type GitlabProject struct {
