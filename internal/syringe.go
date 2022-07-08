@@ -26,6 +26,7 @@ func init() {
 	log.SetLevel(log.DebugLevel)
 }
 
+//TODO: read token from env here
 func NewSyringe(gitlabToken string) (*Syringe, error) {
 	gitlabClient, err := gitlab.NewClient(gitlabToken)
 	if err != nil {
