@@ -4,9 +4,35 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
+	"golang.org/x/exp/slices"
 	"io"
 	"os"
 )
+
+func getMainBranchSlice() []string {
+	return []string{
+		"master",
+		"main",
+	}
+}
+
+func getSupportedLockfiles() []string {
+	return []string{
+		"package-lock.json",
+		"yarn.lock",
+		"requirements.txt",
+		"poetry.lock",
+		"pom.xml",
+		"Gemfile.lock",
+	}
+}
+
+func getCiFiles() []string {
+	return []string{
+		".gitlab-ci.yml",
+		".gitlab-ci.yaml",
+	}
+}
 
 func init() {
 	log.SetReportCaller(false)
@@ -68,13 +94,6 @@ func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, e
 	return files, nil
 }
 
-func getMainBranchSlice() []string {
-	return []string{
-		"master",
-		"main",
-	}
-}
-
 func (s *Syringe) IdentifyMainBranch(projectId int) (*gitlab.Branch, error) {
 	branches, err := s.ListBranches(projectId)
 	if err != nil {
@@ -85,10 +104,8 @@ func (s *Syringe) IdentifyMainBranch(projectId int) (*gitlab.Branch, error) {
 
 	foundBranches := make([]*gitlab.Branch, 0)
 	for _, branch := range branches {
-		for _, mainBranchName := range mainBranchSlice {
-			if branch.Name == mainBranchName {
-				foundBranches = append(foundBranches, branch)
-			}
+		if slices.Contains(mainBranchSlice, branch.Name) {
+			foundBranches = append(foundBranches, branch)
 		}
 	}
 
@@ -129,4 +146,35 @@ func (s *Syringe) GetFileTreeFromProject(projectId int) ([]*gitlab.TreeNode, err
 		return nil, err
 	}
 	return projectFiles, nil
+}
+
+func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, error) {
+	var targetFiles []*GitlabFile
+
+	mainBranch, err := s.IdentifyMainBranch(projectId)
+	if err != nil {
+		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
+		return nil, err
+	}
+
+	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
+	if err != nil {
+		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
+		return nil, err
+	}
+
+	supportedLockfiles := getSupportedLockfiles()
+	ciFiles := getCiFiles()
+	//TODO: make gofunc
+	for _, file := range projectFiles {
+		if slices.Contains(supportedLockfiles, file.Name) || slices.Contains(ciFiles, file.Name) {
+			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Name, &gitlab.GetRawFileOptions{})
+			if err != nil {
+				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
+			}
+			rec := GitlabFile{file.Name, file.Path, file.ID, data}
+			targetFiles = append(targetFiles, &rec)
+		}
+	}
+	return targetFiles, nil
 }
