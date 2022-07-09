@@ -35,6 +35,16 @@ var listProjectsCmd = &cobra.Command{
 
 			lockfiles, ciFiles, err := s.EnumerateTargetFiles(project.ID)
 
+			localProjects = append(localProjects, PhylumSyringGitlab.GitlabProject{
+				project.ID,
+				project.Name,
+				mainBranch.Name,
+				false,
+				false,
+				lockfiles,
+				ciFiles,
+			})
+
 		}
 	},
 }
