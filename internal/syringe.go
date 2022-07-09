@@ -170,35 +170,45 @@ func (s *Syringe) GetFileTreeFromProject(projectId int) ([]*gitlab.TreeNode, err
 	return projectFiles, nil
 }
 
-func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, error) {
-	var targetFiles []*GitlabFile
+func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabFile, error) {
+	var retLockFiles []*GitlabFile
+	var retCiFiles []*GitlabFile
 
 	mainBranch, err := s.IdentifyMainBranch(projectId)
 	if err != nil {
 		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
 	if err != nil {
 		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
-		return nil, err
+		return nil, nil, err
 	}
 
 	supportedLockfiles := getSupportedLockfiles()
-	ciFiles := getCiFiles()
+	supportedciFiles := getCiFiles()
 	//TODO: make gofunc
 	for _, file := range projectFiles {
-		if slices.Contains(supportedLockfiles, file.Name) || slices.Contains(ciFiles, file.Name) {
+		//if slices.Contains(supportedLockfiles, file.Name) || slices.Contains(ciFiles, file.Name) {
+		if slices.Contains(supportedLockfiles, file.Name) {
 			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Name, &gitlab.GetRawFileOptions{})
 			if err != nil {
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}
 			rec := GitlabFile{file.Name, file.Path, file.ID, data}
-			targetFiles = append(targetFiles, &rec)
+			retLockFiles = append(retLockFiles, &rec)
+		}
+		if slices.Contains(supportedciFiles, file.Name) {
+			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Name, &gitlab.GetRawFileOptions{})
+			if err != nil {
+				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
+			}
+			rec := GitlabFile{file.Name, file.Path, file.ID, data}
+			retCiFiles = append(retCiFiles, &rec)
 		}
 	}
-	return targetFiles, nil
+	return retLockFiles, retCiFiles, nil
 }
 
 func (s *Syringe) PhylumGetProjectList() ([]PhylumProject, error) {

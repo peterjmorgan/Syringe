@@ -239,14 +239,15 @@ func TestSyringe_EnumerateTargetFiles(t *testing.T) {
 		name    string
 		args    args
 		want    []*GitlabFile
+		wantTwo []*GitlabFile
 		wantLen int
 		wantErr bool
 	}{
-		{"one", args{31479523}, nil, 2, false},
+		{"one", args{31479523}, nil, nil, 1, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := s.EnumerateTargetFiles(tt.args.projectId)
+			got, gotTwo, err := s.EnumerateTargetFiles(tt.args.projectId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("EnumerateTargetFiles() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -254,8 +255,11 @@ func TestSyringe_EnumerateTargetFiles(t *testing.T) {
 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
 				t.Errorf("EnumerateTargetFiles() got = %v, want %v", got, tt.want)
 			}
+			if reflect.TypeOf(gotTwo) != reflect.TypeOf(tt.wantTwo) {
+				t.Errorf("EnumerateTargetFiles() got = %v, want %v", gotTwo, tt.wantTwo)
+			}
 			if len(got) != tt.wantLen {
-				t.Errorf("EnumerateTargetFiles() got = %v, want %v", got, tt.want)
+				t.Errorf("EnumerateTargetFiles() got = %v, want %v", len(got), tt.want)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ type GitlabFile struct {
 type GitlabProject struct {
 	Id              int
 	Name            string
+	Branch          string
 	IsPhylumEnabled bool
 	IsPhylumReady   bool
 	Lockfiles       []*GitlabFile
