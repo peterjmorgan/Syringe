@@ -1,12 +1,15 @@
 package PhylumSyringGitlab
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
 	"golang.org/x/exp/slices"
 	"io"
 	"os"
+	"os/exec"
 )
 
 func getMainBranchSlice() []string {
@@ -198,6 +201,22 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, error) {
 	return targetFiles, nil
 }
 
-func (s *Syringe) PhylumGetProjectList() {
+func (s *Syringe) PhylumGetProjectList() ([]PhylumProject, error) {
+	var stdErrBytes bytes.Buffer
+	projectListCmd := exec.Command("phylum", "project", "list", "--json")
+	projectListCmd.Stderr = &stdErrBytes
+	output, err := projectListCmd.Output()
+	if err != nil {
+		log.Errorf("Failed to exec PHYLUM PROJECT LIST")
+		return []PhylumProject{}, err
+	}
+	stdErrString := stdErrBytes.String()
+	_ = stdErrString // prob will need this later
 
+	var PhylumProjectList []PhylumProject
+	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
+		log.Errorf("Failed to unmarshal JSON: %v\n", err)
+		return []PhylumProject{}, err
+	}
+	return PhylumProjectList, nil
 }
