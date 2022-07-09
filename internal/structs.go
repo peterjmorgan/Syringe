@@ -21,5 +21,11 @@ type GitlabProject struct {
 type Syringe struct {
 	Gitlab      *gitlab.Client
 	PhylumToken string
-	//TODO: need a db or storage thing
+}
+
+type PhylumProject struct {
+	Name      string `json:"name"`
+	ID        string `json:"id"`
+	UpdatedAt string `json:"updated_at"`
+	Ecosystem string `json:"ecosystem"`
 }

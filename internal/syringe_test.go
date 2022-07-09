@@ -260,3 +260,31 @@ func TestSyringe_EnumerateTargetFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestSyringe_PhylumGetProjectList(t *testing.T) {
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
+	tests := []struct {
+		name    string
+		want    []PhylumProject
+		wantErr bool
+	}{
+		{"one", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.PhylumGetProjectList()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PhylumGetProjectList() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+				t.Errorf("EnumerateTargetFiles() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
