@@ -1,26 +1,49 @@
 package PhylumSyringGitlab
 
 import (
+	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
+	"os"
 	"reflect"
 	"testing"
 )
 
+func setupEnv(t *testing.T) func(t *testing.T) {
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Fatalf("Failed to load .env for testing: %v\n", err)
+	}
+
+	return func(t *testing.T) {
+		err := os.Unsetenv("GITLAB_TOKEN")
+		if err != nil {
+			log.Fatalf("Failed to UNSET gitlab token: %v\n", err)
+		}
+		os.Unsetenv("PHYLUM_TOKEN")
+		if err != nil {
+			log.Fatalf("Failed to UNSET phylum token: %v\n", err)
+		}
+	}
+}
+
 func TestNewSyringe(t *testing.T) {
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
 	type args struct {
 		gitlabToken string
 	}
 	tests := []struct {
 		name    string
-		args    args
 		want    *Syringe
 		wantErr bool
 	}{
-		{"one", args{"bs8FExie7XVsVV7YbnG6"}, nil, false},
+		{"one", nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewSyringe(tt.args.gitlabToken)
+			got, err := NewSyringe()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSyringe() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -33,24 +56,21 @@ func TestNewSyringe(t *testing.T) {
 }
 
 func TestSyringe_ListProjects(t *testing.T) {
-	type fields struct {
-		Gitlab *gitlab.Client
-	}
-	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
 	tests := []struct {
 		name    string
-		fields  fields
 		want    []*gitlab.Project
 		len     int
 		wantErr bool
 	}{
-		{"one", fields{s.Gitlab}, nil, 3, false},
+		{"one", nil, 3, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Syringe{
-				Gitlab: tt.fields.Gitlab,
-			}
 			got, err := s.ListProjects()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListProjects() error = %v, wantErr %v", err, tt.wantErr)
@@ -70,28 +90,25 @@ func TestSyringe_ListProjects(t *testing.T) {
 
 // 31479523
 func TestSyringe_ListFiles(t *testing.T) {
-	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
-	type fields struct {
-		Gitlab *gitlab.Client
-	}
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
 	type args struct {
 		projectId int
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		want    []*gitlab.TreeNode
 		len     int
 		wantErr bool
 	}{
-		{"one", fields{s.Gitlab}, args{31479523}, nil, 5, false},
+		{"one", args{31479523}, nil, 5, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Syringe{
-				Gitlab: tt.fields.Gitlab,
-			}
 			got, err := s.ListFiles(tt.args.projectId, "main")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListFiles() error = %v, wantErr %v", err, tt.wantErr)
@@ -108,28 +125,25 @@ func TestSyringe_ListFiles(t *testing.T) {
 }
 
 func TestSyringe_ListBranches(t *testing.T) {
-	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
-	type fields struct {
-		Gitlab *gitlab.Client
-	}
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
 	type args struct {
 		projectId int
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		want    []*gitlab.Branch
 		len     int
 		wantErr bool
 	}{
-		{"one", fields{s.Gitlab}, args{31479523}, nil, 20, false},
+		{"one", args{31479523}, nil, 20, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Syringe{
-				Gitlab: tt.fields.Gitlab,
-			}
 			got, err := s.ListBranches(tt.args.projectId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListBranches() error = %v, wantErr %v", err, tt.wantErr)
@@ -146,28 +160,25 @@ func TestSyringe_ListBranches(t *testing.T) {
 }
 
 func TestSyringe_IdentifyMainBranch(t *testing.T) {
-	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
-	type fields struct {
-		Gitlab *gitlab.Client
-	}
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
 	type args struct {
 		projectId int
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		want    *gitlab.Branch
 		wantErr bool
 	}{
-		{"one", fields{s.Gitlab}, args{31479523}, nil, false},
-		{"two", fields{s.Gitlab}, args{0}, nil, true},
+		{"one", args{31479523}, nil, false},
+		{"two", args{0}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Syringe{
-				Gitlab: tt.fields.Gitlab,
-			}
 			got, err := s.IdentifyMainBranch(tt.args.projectId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("IdentifyMainBranch() error = %v, wantErr %v", err, tt.wantErr)
@@ -181,28 +192,25 @@ func TestSyringe_IdentifyMainBranch(t *testing.T) {
 }
 
 func TestSyringe_GetFileTreeFromProject(t *testing.T) {
-	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
-	type fields struct {
-		Gitlab *gitlab.Client
-	}
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
 	type args struct {
 		projectId int
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		want    []*gitlab.TreeNode
 		wantLen int
 		wantErr bool
 	}{
-		{"one", fields{s.Gitlab}, args{31479523}, nil, 5, false},
+		{"one", args{31479523}, nil, 5, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Syringe{
-				Gitlab: tt.fields.Gitlab,
-			}
 			got, err := s.GetFileTreeFromProject(tt.args.projectId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFileTreeFromProject() error = %v, wantErr %v", err, tt.wantErr)
@@ -219,28 +227,25 @@ func TestSyringe_GetFileTreeFromProject(t *testing.T) {
 }
 
 func TestSyringe_EnumerateTargetFiles(t *testing.T) {
-	s, _ := NewSyringe("bs8FExie7XVsVV7YbnG6")
-	type fields struct {
-		Gitlab *gitlab.Client
-	}
+	tearDown := setupEnv(t)
+	defer tearDown(t)
+
+	s, _ := NewSyringe()
+
 	type args struct {
 		projectId int
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		want    []*GitlabFile
 		wantLen int
 		wantErr bool
 	}{
-		{"one", fields{s.Gitlab}, args{31479523}, nil, 5, false},
+		{"one", args{31479523}, nil, 2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Syringe{
-				Gitlab: tt.fields.Gitlab,
-			}
 			got, err := s.EnumerateTargetFiles(tt.args.projectId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("EnumerateTargetFiles() error = %v, wantErr %v", err, tt.wantErr)

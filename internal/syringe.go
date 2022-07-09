@@ -34,7 +34,16 @@ func getCiFiles() []string {
 	}
 }
 
+func readEnvVar(key string) (string, error) {
+	if value, ok := os.LookupEnv(key); ok {
+		return value, nil
+	} else {
+		return "", fmt.Errorf("Failed to read environment variable: %v\n", key)
+	}
+}
+
 func init() {
+	// setup logging
 	log.SetReportCaller(false)
 	log.SetFormatter(&log.TextFormatter{
 		ForceColors:            true,
@@ -46,21 +55,31 @@ func init() {
 	if err != nil {
 		fmt.Println("Error: failed to open logfile")
 	}
-
 	mw := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(mw)
 	log.SetLevel(log.DebugLevel)
 }
 
-//TODO: read token from env here
-func NewSyringe(gitlabToken string) (*Syringe, error) {
-	gitlabClient, err := gitlab.NewClient(gitlabToken)
+func NewSyringe() (*Syringe, error) {
+	token_gitlab, err := readEnvVar("GITLAB_TOKEN")
+	if err != nil {
+		log.Fatalf("Failed to read gitlab token from ENV\n")
+	}
+	token_phylum, err := readEnvVar("PHYLUM_TOKEN")
+	if err != nil {
+		log.Fatalf("Failed to read phylum token from ENV\n")
+	}
+
+	gitlabClient, err := gitlab.NewClient(token_gitlab)
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)
 		return nil, err
 	}
 
-	return &Syringe{Gitlab: gitlabClient}, nil
+	return &Syringe{
+		Gitlab:      gitlabClient,
+		PhylumToken: token_phylum,
+	}, nil
 }
 
 func (s *Syringe) ListProjects() ([]*gitlab.Project, error) {
@@ -177,4 +196,8 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, error) {
 		}
 	}
 	return targetFiles, nil
+}
+
+func (s *Syringe) PhylumGetProjectList() {
+
 }
