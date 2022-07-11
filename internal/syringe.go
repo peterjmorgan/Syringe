@@ -205,9 +205,8 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 	supportedciFiles := getCiFiles()
 	// TODO: make gofunc
 	for _, file := range projectFiles {
-		// if slices.Contains(supportedLockfiles, file.Name) || slices.Contains(ciFiles, file.Name) {
 		if slices.Contains(supportedLockfiles, file.Name) {
-			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Name, &gitlab.GetRawFileOptions{})
+			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranch.Name})
 			if err != nil {
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}
@@ -215,7 +214,7 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 			retLockFiles = append(retLockFiles, &rec)
 		}
 		if slices.Contains(supportedciFiles, file.Name) {
-			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Name, &gitlab.GetRawFileOptions{})
+			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{})
 			if err != nil {
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}
