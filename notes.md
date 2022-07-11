@@ -16,6 +16,8 @@
 - Handle creating groups
 - Add group name parameter to run-phylum command
 
+- run-phylum: add flag to read list of project ids (maybe from an environment variable)
+
 
 # Readme
 1. Setup GITLAB_TOKEN environment variable
