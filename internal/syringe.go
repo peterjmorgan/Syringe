@@ -231,7 +231,8 @@ func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
 	projectListCmd.Stderr = &stdErrBytes
 	output, err := projectListCmd.Output()
 	if err != nil {
-		log.Errorf("Failed to exec PHYLUM PROJECT LIST")
+		log.Errorf("Failed to exec 'phylum project list': %v\n", err)
+		log.Errorf(stdErrBytes.String())
 		return nil, err
 	}
 	stdErrString := stdErrBytes.String()

@@ -35,9 +35,9 @@ var runPhylumCmd = &cobra.Command{
 		}
 
 		var localProjects []PhylumSyringGitlab.GitlabProject
-		var PhylumProjectsToCreate []string
 
 		for _, project := range gitlabProjects {
+			var PhylumProjectsToCreate []string
 			mainBranch, err := s.IdentifyMainBranch(project.ID)
 			if err != nil {
 				log.Fatalf("Failed to IdentifyMainBranch(): %v\n", err)
