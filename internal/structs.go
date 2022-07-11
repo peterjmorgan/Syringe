@@ -12,7 +12,7 @@ type GitlabFile struct {
 type GitlabProject struct {
 	Id              int
 	Name            string
-	Branch          string
+	Branch          *gitlab.Branch
 	IsPhylumEnabled bool
 	IsPhylumReady   bool
 	Lockfiles       []*GitlabFile
@@ -20,13 +20,14 @@ type GitlabProject struct {
 }
 
 type Syringe struct {
-	Gitlab      *gitlab.Client
-	PhylumToken string
+	Gitlab          *gitlab.Client
+	PhylumToken     string
+	PhylumGroupName string
 }
 
 type PhylumProject struct {
-	Name      string `json:"name"`
-	ID        string `json:"id"`
-	UpdatedAt string `json:"updated_at"`
+	Name      string `json:"name" yaml:"name"`
+	ID        string `json:"id" yaml:"id"`
+	UpdatedAt string `json:"updated_at" yaml:"created_at"`
 	Ecosystem string `json:"ecosystem"`
 }

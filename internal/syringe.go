@@ -4,14 +4,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
 	"golang.org/x/exp/slices"
-	"io"
-	"os"
-	"os/exec"
+	"gopkg.in/yaml.v2"
 )
 
+// Branches to examine for "main" branch
 func getMainBranchSlice() []string {
 	return []string{
 		"master",
@@ -19,6 +25,7 @@ func getMainBranchSlice() []string {
 	}
 }
 
+// Lockfiles to target
 func getSupportedLockfiles() []string {
 	return []string{
 		"package-lock.json",
@@ -30,6 +37,7 @@ func getSupportedLockfiles() []string {
 	}
 }
 
+// CI Files to target
 func getCiFiles() []string {
 	return []string{
 		".gitlab-ci.yml",
@@ -64,24 +72,31 @@ func init() {
 }
 
 func NewSyringe() (*Syringe, error) {
-	token_gitlab, err := readEnvVar("GITLAB_TOKEN")
+	gitlabToken, err := readEnvVar("GITLAB_TOKEN")
 	if err != nil {
 		log.Fatalf("Failed to read gitlab token from ENV\n")
 	}
-	token_phylum, err := readEnvVar("PHYLUM_TOKEN")
+	phylumToken, err := readEnvVar("PHYLUM_TOKEN")
 	if err != nil {
 		log.Fatalf("Failed to read phylum token from ENV\n")
 	}
 
-	gitlabClient, err := gitlab.NewClient(token_gitlab)
+	phylumGroupName, err := readEnvVar("PHYLUM_GROUP_NAME")
+	if err != nil {
+		log.Infof("PHYLUM_GROUP is not set\n")
+		phylumGroupName = ""
+	}
+
+	gitlabClient, err := gitlab.NewClient(gitlabToken)
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)
 		return nil, err
 	}
 
 	return &Syringe{
-		Gitlab:      gitlabClient,
-		PhylumToken: token_phylum,
+		Gitlab:          gitlabClient,
+		PhylumToken:     phylumToken,
+		PhylumGroupName: phylumGroupName,
 	}, nil
 }
 
@@ -188,9 +203,9 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 
 	supportedLockfiles := getSupportedLockfiles()
 	supportedciFiles := getCiFiles()
-	//TODO: make gofunc
+	// TODO: make gofunc
 	for _, file := range projectFiles {
-		//if slices.Contains(supportedLockfiles, file.Name) || slices.Contains(ciFiles, file.Name) {
+		// if slices.Contains(supportedLockfiles, file.Name) || slices.Contains(ciFiles, file.Name) {
 		if slices.Contains(supportedLockfiles, file.Name) {
 			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Name, &gitlab.GetRawFileOptions{})
 			if err != nil {
@@ -211,14 +226,14 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 	return retLockFiles, retCiFiles, nil
 }
 
-func (s *Syringe) PhylumGetProjectList() ([]PhylumProject, error) {
+func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
 	var stdErrBytes bytes.Buffer
 	projectListCmd := exec.Command("phylum", "project", "list", "--json")
 	projectListCmd.Stderr = &stdErrBytes
 	output, err := projectListCmd.Output()
 	if err != nil {
 		log.Errorf("Failed to exec PHYLUM PROJECT LIST")
-		return []PhylumProject{}, err
+		return nil, err
 	}
 	stdErrString := stdErrBytes.String()
 	_ = stdErrString // prob will need this later
@@ -226,7 +241,118 @@ func (s *Syringe) PhylumGetProjectList() ([]PhylumProject, error) {
 	var PhylumProjectList []PhylumProject
 	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
 		log.Errorf("Failed to unmarshal JSON: %v\n", err)
-		return []PhylumProject{}, err
+		return nil, err
 	}
-	return PhylumProjectList, nil
+
+	returnMap := make(map[string]PhylumProject, 0)
+	for _, elem := range PhylumProjectList {
+		returnMap[elem.Name] = elem
+	}
+	return returnMap, nil
+}
+
+func (s *Syringe) GeneratePhylumProjectName(projectName string, lockfilePath string) string {
+	return fmt.Sprintf("SYR-%v__%v", projectName, lockfilePath)
+}
+
+func RemoveTempDir(tempDir string) {
+	err := os.RemoveAll(tempDir)
+	if err != nil {
+		log.Errorf("Failed to remove temp directory %v:%v\n", tempDir, err)
+	}
+}
+
+func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]PhylumProject, error) {
+	createdProjects := make([]PhylumProject, 0)
+
+	for _, elem := range projectsToCreate {
+		tempDir, err := ioutil.TempDir("", "syringe-create")
+		if err != nil {
+			log.Errorf("Failed to create temp directory: %v\n", err)
+			return nil, err
+		}
+		defer RemoveTempDir(tempDir)
+
+		var stdErrBytes bytes.Buffer
+		var CreateCmdArgs = []string{"project", "create", elem}
+		if s.PhylumGroupName != "" {
+			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
+		}
+		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
+		projectCreateCmd.Stderr = &stdErrBytes
+		projectCreateCmd.Dir = tempDir
+		err = projectCreateCmd.Run()
+		stdErrString := stdErrBytes.String()
+		if err != nil {
+			log.Errorf("Failed to exec 'phylum project create %v': %v\n", elem, err)
+			log.Errorf("%v\n", stdErrString)
+			return nil, err
+		} else {
+			log.Infof("Created phylum project: %v\n", elem)
+		}
+
+		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+		phylumProjectData, err := os.ReadFile(phylumProjectFile)
+		if err != nil {
+			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
+			return nil, err
+		}
+
+		phylumProject := PhylumProject{}
+		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
+		if err != nil {
+			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", elem, err)
+			return nil, err
+		}
+		createdProjects = append(createdProjects, phylumProject)
+	}
+	return createdProjects, nil
+}
+
+func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile) error {
+	// create temp directory to write the lockfile content for analyze
+	tempDir, err := ioutil.TempDir("", "syringe-analyze")
+	if err != nil {
+		log.Errorf("Failed to create temp directory: %v\n", err)
+		return err
+	}
+	defer RemoveTempDir(tempDir)
+
+	// create the lockfile
+	tempLockfileName := filepath.Join(tempDir, lockfile.Name)
+	err = os.WriteFile(tempLockfileName, lockfile.Content, 0644)
+	if err != nil {
+		log.Errorf("Failed to write lockfile content to temp file: %v", err)
+		return err
+	}
+	// create the .phylum_project file
+	dotPhylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+	dotPhylumProjectData, err := yaml.Marshal(phylumProjectFile)
+	if err != nil {
+		log.Errorf("Failed to marshal phylum project %v to YAML: %v\n", phylumProjectFile.Name, err)
+		return err
+	}
+	err = os.WriteFile(dotPhylumProjectFile, dotPhylumProjectData, 0644)
+
+	var stdErrBytes bytes.Buffer
+	var AnalyzeCmdArgs = []string{
+		"analyze",
+		lockfile.Name,
+	}
+	if s.PhylumGroupName != "" {
+		AnalyzeCmdArgs = append(AnalyzeCmdArgs, "-g")
+	}
+	projectAnalyzeCmd := exec.Command("phylum", AnalyzeCmdArgs...)
+	projectAnalyzeCmd.Stderr = &stdErrBytes
+	projectAnalyzeCmd.Dir = tempDir
+	err = projectAnalyzeCmd.Run()
+	stdErrString := stdErrBytes.String()
+	if err != nil {
+		log.Errorf("Failed to exec 'phylum %v': %v\n", strings.Join(AnalyzeCmdArgs, " "), err)
+		log.Errorf("%v\n", stdErrString)
+		return err
+	} else {
+		log.Infof("Phylum Analyzed: %v\n", phylumProjectFile.Name)
+	}
+	return nil
 }
