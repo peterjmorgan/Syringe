@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"os"
+
+	"github.com/jedib0t/go-pretty/v6/table"
 	PhylumSyringGitlab "github.com/peterjmorgan/PhylumSyringeGitlab/internal"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -25,6 +28,13 @@ var listProjectsCmd = &cobra.Command{
 			return
 		}
 
+		// phylumProjectList, err := s.PhylumGetProjectList()
+		// if err != nil {
+		//	log.Fatalf("Failed to PhylumGetProjectList(): %v\n", err)
+		//	return
+		// }
+		// _ = phylumProjectList
+
 		var localProjects []PhylumSyringGitlab.GitlabProject
 		for _, project := range gitlabProjects {
 			mainBranch, err := s.IdentifyMainBranch(project.ID)
@@ -38,7 +48,7 @@ var listProjectsCmd = &cobra.Command{
 			localProjects = append(localProjects, PhylumSyringGitlab.GitlabProject{
 				project.ID,
 				project.Name,
-				mainBranch.Name,
+				mainBranch,
 				false,
 				false,
 				lockfiles,
@@ -46,5 +56,16 @@ var listProjectsCmd = &cobra.Command{
 			})
 
 		}
+		t := table.NewWriter()
+		t.SetStyle(table.StyleLight)
+		t.SetOutputMirror(os.Stdout)
+		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "# LockFiles"})
+		for _, lp := range localProjects {
+			t.AppendRow(table.Row{
+				lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, len(lp.Lockfiles),
+			})
+		}
+		t.Render()
+
 	},
 }
