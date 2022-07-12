@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	PhylumSyringGitlab "github.com/peterjmorgan/PhylumSyringeGitlab/internal"
+	PhylumSyringGitlab "github.com/peterjmorgan/Syringe/internal"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

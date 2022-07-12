@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	PhylumSyringGitlab "github.com/peterjmorgan/PhylumSyringeGitlab/internal"
+	PhylumSyringGitlab "github.com/peterjmorgan/Syringe/internal"
+	"github.com/pkg/profile"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/maps"
@@ -16,6 +17,8 @@ var runPhylumCmd = &cobra.Command{
 	Use:   "run-phylum",
 	Short: "Run Phylum on GitLab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
+		defer profile.Start(profile.ProfilePath(".")).Stop()
+
 		s, err := PhylumSyringGitlab.NewSyringe()
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
