@@ -268,6 +268,51 @@ func RemoveTempDir(tempDir string) {
 	}
 }
 
+func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {
+	for projectName := range projectNames {
+		tempDir, err := ioutil.TempDir("", "syringe-create")
+		if err != nil {
+			log.Errorf("Failed to create temp directory: %v\n", err)
+			return err
+		}
+		defer RemoveTempDir(tempDir)
+
+		var stdErrBytes bytes.Buffer
+		var CreateCmdArgs = []string{"project", "create", projectName}
+		if s.PhylumGroupName != "" {
+			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
+		}
+		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
+		projectCreateCmd.Stderr = &stdErrBytes
+		projectCreateCmd.Dir = tempDir
+		err = projectCreateCmd.Run()
+		stdErrString := stdErrBytes.String()
+		if err != nil {
+			log.Errorf("Failed to exec 'phylum project create %v': %v\n", projectName, err)
+			log.Errorf("%v\n", stdErrString)
+			return err
+		} else {
+			log.Infof("Created phylum project: %v\n", projectName)
+		}
+
+		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+		phylumProjectData, err := os.ReadFile(phylumProjectFile)
+		if err != nil {
+			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
+			return err
+		}
+
+		phylumProject := PhylumProject{}
+		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
+		if err != nil {
+			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", projectName, err)
+			return err
+		}
+		projects <- phylumProject
+	}
+	return nil
+}
+
 func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]PhylumProject, error) {
 	createdProjects := make([]PhylumProject, 0)
 

@@ -49,10 +49,11 @@ var runPhylumCmd = &cobra.Command{
 		}()
 		wg.Wait()
 
-		var localProjects []Syringe.GitlabProject
+		//var localProjects []Syringe.GitlabProject
 
 		// Enumerate list of Gitlab projects that do not have an associated Phylum project.
 		chCreateProjects := make(chan string)
+		chProjectResults := make(chan Syringe.PhylumProject)
 		var wgLoop sync.WaitGroup
 
 		go func() {
@@ -76,6 +77,7 @@ var runPhylumCmd = &cobra.Command{
 					if !slices.Contains(maps.Keys(*phylumProjectMap), tempName) {
 						// PhylumProjectsToCreate = append(PhylumProjectsToCreate, tempName)
 						chCreateProjects <- tempName
+						go s.PhylumCreateProject(chCreateProjects, chProjectResults)
 					} else {
 						log.Infof("Found Phylum project for %v : %v\n", project.Name, tempName)
 					}
@@ -83,43 +85,31 @@ var runPhylumCmd = &cobra.Command{
 			}(*project)
 		}
 
-		var PhylumProjectsToCreate []string
-		for item := range chCreateProjects {
-			PhylumProjectsToCreate = append(PhylumProjectsToCreate, item)
+		// recv from channel to block until create loop is complete
+		for item := range chProjectResults {
+			//createdPhylumProjects = append(createdPhylumProjects, item)
+			(*phylumProjectMap)[item.Name] = item
 		}
 
-		chNewProjects := make(chan Syringe.PhylumProject)
+		// Phylum analyze loop
+		for _, project := range *gitlabProjects {
+			wgLoop.Add(1)
+			go func(inProject gitlab.Project) {
+				defer wgLoop.Done()
 
-		go func() {
+				lockfiles, _, err := s.EnumerateTargetFiles(inProject.ID)
+				if err != nil {
+					log.Errorf("Failed to EnumerateTargetFiles(): %v\n", err)
+					return
+				}
 
-		}()
-
-			// TODO: I think i'm breaking this into slices so i can later goroutine it, but I don't really know
-			createdPhylumProjects, err := s.PhylumCreateProjectsFromList(PhylumProjectsToCreate)
-			if err != nil {
-				log.Errorf("Failed to create phylum project: %v\n", err)
-				return
-			}
-
-			for _, cp := range createdPhylumProjects {
-				(*phylumProjectMap)[cp.Name] = cp
-			}
-
-			for _, lf := range lockfiles {
-				ppName := s.GeneratePhylumProjectName(project.Name, lf.Path)
-				phylumProjectFile := (*phylumProjectMap)[ppName]
-				err = s.PhylumRunAnalyze(phylumProjectFile, lf)
-			}
-
-			localProjects = append(localProjects, Syringe.GitlabProject{
-				project.ID,
-				project.Name,
-				mainBranch,
-				false,
-				false,
-				lockfiles,
-				ciFiles,
-			})
+				for _, lf := range lockfiles {
+					ppName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
+					phylumProjectFile := (*phylumProjectMap)[ppName]
+					err = s.PhylumRunAnalyze(phylumProjectFile, lf)
+				}
+			}(*project)
 		}
+		wgLoop.Wait()
 	},
 }
