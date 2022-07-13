@@ -49,16 +49,15 @@ var runPhylumCmd = &cobra.Command{
 		}()
 		wg.Wait()
 
-		//var localProjects []Syringe.GitlabProject
-
 		// Enumerate list of Gitlab projects that do not have an associated Phylum project.
-		chCreateProjects := make(chan string)
-		chProjectResults := make(chan Syringe.PhylumProject)
+		chCreateProjects := make(chan string, 3000)
+		chProjectResults := make(chan Syringe.PhylumProject, 3000)
 		var wgLoop sync.WaitGroup
 
 		go func() {
 			wgLoop.Wait()
 			close(chCreateProjects)
+			log.Debugf("chProjects channel closed")
 		}()
 		for _, project := range *gitlabProjects {
 			wgLoop.Add(1)
@@ -75,9 +74,15 @@ var runPhylumCmd = &cobra.Command{
 					tempName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
 					// if the project name is NOT in the slice of keys from the phylum project list map, we have to create it
 					if !slices.Contains(maps.Keys(*phylumProjectMap), tempName) {
-						// PhylumProjectsToCreate = append(PhylumProjectsToCreate, tempName)
+						// log.Debugf("sending %v to chCreateProjects\n", tempName)
 						chCreateProjects <- tempName
-						go s.PhylumCreateProject(chCreateProjects, chProjectResults)
+						go func() {
+							err = s.PhylumCreateProject(chCreateProjects, chProjectResults)
+							if err != nil {
+								log.Errorf("PhylumCreateProject failed: %v\n", err)
+								return
+							}
+						}()
 					} else {
 						log.Infof("Found Phylum project for %v : %v\n", project.Name, tempName)
 					}
@@ -86,8 +91,10 @@ var runPhylumCmd = &cobra.Command{
 		}
 
 		// recv from channel to block until create loop is complete
+		close(chProjectResults)
 		for item := range chProjectResults {
-			//createdPhylumProjects = append(createdPhylumProjects, item)
+			// createdPhylumProjects = append(createdPhylumProjects, item)
+			log.Debugf("recv'd %v\n", item.Name)
 			(*phylumProjectMap)[item.Name] = item
 		}
 
