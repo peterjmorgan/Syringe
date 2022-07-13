@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"os"
+	"sync"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	PhylumSyringGitlab "github.com/peterjmorgan/Syringe/internal"
+	Syringe "github.com/peterjmorgan/Syringe/internal"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/xanzy/go-gitlab"
 )
 
 func init() {
@@ -17,45 +19,62 @@ var listProjectsCmd = &cobra.Command{
 	Use:   "list-projects",
 	Short: "List Gitlab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := PhylumSyringGitlab.NewSyringe()
+		s, err := Syringe.NewSyringe()
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
 		}
-		gitlabProjects, err := s.ListProjects()
-		if err != nil {
-			log.Fatalf("Failed to ListProjects(): %v\n", err)
-			return
-		}
+		var gitlabProjects *[]*gitlab.Project
+		var wg sync.WaitGroup
 
-		// phylumProjectList, err := s.PhylumGetProjectList()
-		// if err != nil {
-		//	log.Fatalf("Failed to PhylumGetProjectList(): %v\n", err)
-		//	return
-		// }
-		// _ = phylumProjectList
-
-		var localProjects []PhylumSyringGitlab.GitlabProject
-		for _, project := range gitlabProjects {
-			mainBranch, err := s.IdentifyMainBranch(project.ID)
+		wg.Add(1)
+		go func() {
+			err := s.ListProjects(&gitlabProjects)
 			if err != nil {
-				log.Fatalf("Failed to IdentifyMainBranch(): %v\n", err)
+				log.Fatalf("Failed to ListProjects(): %v\n", err)
 				return
 			}
+			wg.Done()
+		}()
+		wg.Wait()
 
-			lockfiles, ciFiles, err := s.EnumerateTargetFiles(project.ID)
+		var localProjects []Syringe.GitlabProject
+		chProject := make(chan Syringe.GitlabProject)
+		var wgLoop sync.WaitGroup
 
-			localProjects = append(localProjects, PhylumSyringGitlab.GitlabProject{
-				project.ID,
-				project.Name,
-				mainBranch,
-				false,
-				false,
-				lockfiles,
-				ciFiles,
-			})
+		go func() {
+			wgLoop.Wait()
+			close(chProject)
+		}()
 
+		for _, project := range *gitlabProjects {
+			wgLoop.Add(1)
+			go func(inProject gitlab.Project) {
+				defer wgLoop.Done()
+				mainBranch, err := s.IdentifyMainBranch(inProject.ID)
+				if err != nil {
+					log.Fatalf("Failed to IdentifyMainBranch(): %v\n", err)
+					return
+				}
+
+				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
+
+				chProject <- Syringe.GitlabProject{
+					inProject.ID,
+					inProject.Name,
+					mainBranch,
+					false,
+					false,
+					lockfiles,
+					ciFiles,
+				}
+			}(*project)
 		}
+
+		for item := range chProject {
+			localProjects = append(localProjects, item)
+		}
+
 		t := table.NewWriter()
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
