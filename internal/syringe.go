@@ -270,6 +270,7 @@ func RemoveTempDir(tempDir string) {
 
 func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {
 	for projectName := range projectNames {
+		log.Debugf("PCP got %v\n", projectName)
 		tempDir, err := ioutil.TempDir("", "syringe-create")
 		if err != nil {
 			log.Errorf("Failed to create temp directory: %v\n", err)
@@ -362,6 +363,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 
 func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile) error {
 	// create temp directory to write the lockfile content for analyze
+	log.Infof("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")
 	if err != nil {
 		log.Errorf("Failed to create temp directory: %v\n", err)
