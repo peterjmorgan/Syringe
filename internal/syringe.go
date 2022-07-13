@@ -100,13 +100,15 @@ func NewSyringe() (*Syringe, error) {
 	}, nil
 }
 
-func (s *Syringe) ListProjects() ([]*gitlab.Project, error) {
-	projects, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(true)})
+func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
+	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(true)})
 	if err != nil {
 		log.Errorf("Failed to list gitlab projects: %v\n", err)
-		return nil, err
+		return err
 	}
-	return projects, nil
+	log.Infof("Len of gitlab projects: %v\n", len(temp))
+	*projects = &temp
+	return nil
 }
 
 func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
@@ -225,7 +227,7 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 	return retLockFiles, retCiFiles, nil
 }
 
-func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
+func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	var stdErrBytes bytes.Buffer
 	projectListCmd := exec.Command("phylum", "project", "list", "--json")
 	projectListCmd.Stderr = &stdErrBytes
@@ -233,7 +235,8 @@ func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
 	if err != nil {
 		log.Errorf("Failed to exec 'phylum project list': %v\n", err)
 		log.Errorf(stdErrBytes.String())
-		return nil, err
+		// return nil, err
+		return err
 	}
 	stdErrString := stdErrBytes.String()
 	_ = stdErrString // prob will need this later
@@ -241,14 +244,17 @@ func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
 	var PhylumProjectList []PhylumProject
 	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
 		log.Errorf("Failed to unmarshal JSON: %v\n", err)
-		return nil, err
+		// return nil, err
+		return err
 	}
 
 	returnMap := make(map[string]PhylumProject, 0)
 	for _, elem := range PhylumProjectList {
 		returnMap[elem.Name] = elem
 	}
-	return returnMap, nil
+	*retVal = &returnMap
+	// return returnMap, nil
+	return nil
 }
 
 func (s *Syringe) GeneratePhylumProjectName(projectName string, lockfilePath string) string {
