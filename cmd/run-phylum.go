@@ -19,6 +19,9 @@ var runPhylumCmd = &cobra.Command{
 	Use:   "run-phylum",
 	Short: "Run Phylum on GitLab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
+		if cmd.Flags().Lookup("debug").Changed {
+			log.SetLevel(log.DebugLevel)
+		}
 
 		s, err := Syringe.NewSyringe()
 		if err != nil {
@@ -57,7 +60,7 @@ var runPhylumCmd = &cobra.Command{
 		go func() {
 			wgLoop.Wait()
 			close(chCreateProjects)
-			log.Debugf("chProjects channel closed")
+			// log.Debugf("chProjects channel closed")
 		}()
 		for _, project := range *gitlabProjects {
 			wgLoop.Add(1)
@@ -74,7 +77,7 @@ var runPhylumCmd = &cobra.Command{
 					tempName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
 					// if the project name is NOT in the slice of keys from the phylum project list map, we have to create it
 					if !slices.Contains(maps.Keys(*phylumProjectMap), tempName) {
-						// log.Debugf("sending %v to chCreateProjects\n", tempName)
+						log.Debugf("sending %v to chCreateProjects\n", tempName)
 						chCreateProjects <- tempName
 						go func() {
 							err = s.PhylumCreateProject(chCreateProjects, chProjectResults)
@@ -84,7 +87,7 @@ var runPhylumCmd = &cobra.Command{
 							}
 						}()
 					} else {
-						log.Infof("Found Phylum project for %v : %v\n", project.Name, tempName)
+						log.Infof("Found Phylum project for %v : %v\n", inProject.Name, tempName)
 					}
 				}
 			}(*project)
@@ -93,8 +96,7 @@ var runPhylumCmd = &cobra.Command{
 		// recv from channel to block until create loop is complete
 		close(chProjectResults)
 		for item := range chProjectResults {
-			// createdPhylumProjects = append(createdPhylumProjects, item)
-			log.Debugf("recv'd %v\n", item.Name)
+			log.Debugf("recv'd projectResult: %v\n", item.Name)
 			(*phylumProjectMap)[item.Name] = item
 		}
 
