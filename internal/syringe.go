@@ -68,7 +68,7 @@ func init() {
 	}
 	mw := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(mw)
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.InfoLevel)
 }
 
 func NewSyringe() (*Syringe, error) {
@@ -76,14 +76,14 @@ func NewSyringe() (*Syringe, error) {
 	if err != nil {
 		log.Fatalf("Failed to read gitlab token from ENV\n")
 	}
-	phylumToken, err := readEnvVar("PHYLUM_TOKEN")
+	phylumToken, err := readEnvVar("PHYLUM_API_KEY")
 	if err != nil {
-		log.Fatalf("Failed to read phylum token from ENV\n")
+		log.Fatalf("Failed to read phylum api key from ENV\n")
 	}
 
 	phylumGroupName, err := readEnvVar("PHYLUM_GROUP_NAME")
 	if err != nil {
-		log.Infof("PHYLUM_GROUP is not set\n")
+		log.Debugf("PHYLUM_GROUP is not set\n")
 		phylumGroupName = ""
 	}
 
@@ -106,7 +106,7 @@ func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
 		log.Errorf("Failed to list gitlab projects: %v\n", err)
 		return err
 	}
-	log.Infof("Len of gitlab projects: %v\n", len(temp))
+	log.Debugf("Len of gitlab projects: %v\n", len(temp))
 	*projects = &temp
 	return nil
 }
@@ -205,7 +205,6 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 
 	supportedLockfiles := getSupportedLockfiles()
 	supportedciFiles := getCiFiles()
-	// TODO: make gofunc
 	for _, file := range projectFiles {
 		if slices.Contains(supportedLockfiles, file.Name) {
 			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranch.Name})
@@ -229,13 +228,16 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 
 func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	var stdErrBytes bytes.Buffer
-	projectListCmd := exec.Command("phylum", "project", "list", "--json")
+	var projectListArgs = []string{"project", "list", "--json"}
+	if s.PhylumGroupName != "" {
+		projectListArgs = append(projectListArgs, "-g", s.PhylumGroupName)
+	}
+	projectListCmd := exec.Command("phylum", projectListArgs...)
 	projectListCmd.Stderr = &stdErrBytes
 	output, err := projectListCmd.Output()
 	if err != nil {
 		log.Errorf("Failed to exec 'phylum project list': %v\n", err)
 		log.Errorf(stdErrBytes.String())
-		// return nil, err
 		return err
 	}
 	stdErrString := stdErrBytes.String()
@@ -244,7 +246,6 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	var PhylumProjectList []PhylumProject
 	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
 		log.Errorf("Failed to unmarshal JSON: %v\n", err)
-		// return nil, err
 		return err
 	}
 
@@ -252,8 +253,8 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	for _, elem := range PhylumProjectList {
 		returnMap[elem.Name] = elem
 	}
+	log.Debugf("Found %v phylum projects\n", len(returnMap))
 	*retVal = &returnMap
-	// return returnMap, nil
 	return nil
 }
 
@@ -270,7 +271,6 @@ func RemoveTempDir(tempDir string) {
 
 func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {
 	for projectName := range projectNames {
-		log.Debugf("PCP got %v\n", projectName)
 		tempDir, err := ioutil.TempDir("", "syringe-create")
 		if err != nil {
 			log.Errorf("Failed to create temp directory: %v\n", err)
@@ -293,7 +293,7 @@ func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<
 			log.Errorf("%v\n", stdErrString)
 			return err
 		} else {
-			log.Infof("Created phylum project: %v\n", projectName)
+			log.Debugf("Created phylum project: %v\n", projectName)
 		}
 
 		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
@@ -363,7 +363,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 
 func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile) error {
 	// create temp directory to write the lockfile content for analyze
-	log.Infof("Analyzing %v\n", phylumProjectFile.Name)
+	log.Debugf("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")
 	if err != nil {
 		log.Errorf("Failed to create temp directory: %v\n", err)
@@ -388,10 +388,7 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 	err = os.WriteFile(dotPhylumProjectFile, dotPhylumProjectData, 0644)
 
 	var stdErrBytes bytes.Buffer
-	var AnalyzeCmdArgs = []string{
-		"analyze",
-		lockfile.Name,
-	}
+	var AnalyzeCmdArgs = []string{"analyze", lockfile.Name}
 	if s.PhylumGroupName != "" {
 		AnalyzeCmdArgs = append(AnalyzeCmdArgs, "-g")
 	}
@@ -405,7 +402,7 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 		log.Errorf("%v\n", stdErrString)
 		return err
 	} else {
-		log.Infof("Phylum Analyzed: %v\n", phylumProjectFile.Name)
+		log.Debugf("Phylum Analyzed: %v\n", phylumProjectFile.Name)
 	}
 	return nil
 }
