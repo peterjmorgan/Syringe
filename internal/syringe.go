@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -97,6 +98,7 @@ func NewSyringe() (*Syringe, error) {
 		Gitlab:          gitlabClient,
 		PhylumToken:     phylumToken,
 		PhylumGroupName: phylumGroupName,
+		ProjectIDs:      []string{},
 	}, nil
 }
 
@@ -118,6 +120,18 @@ func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
 		return nil, err
 	}
 	return branches, nil
+}
+
+func (s *Syringe) PrintProjectVariables(projectId int) error {
+	variables, _, err := s.Gitlab.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
+	if err != nil {
+		log.Errorf("Failed to list project variables from %v: %v\n", projectId, err)
+		return err
+	}
+	for _, variable := range variables {
+		log.Infof("Variable: %v:%v\n", variable.Key, variable.Value)
+	}
+	return nil
 }
 
 func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, error) {
@@ -404,5 +418,30 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 	} else {
 		log.Debugf("Phylum Analyzed: %v\n", phylumProjectFile.Name)
 	}
+	return nil
+}
+
+// LoadPidFile Read a text file of project IDs to operate on
+// The text file should have one project ID per line
+func (s *Syringe) LoadPidFile(filename string) error {
+	var pids []string
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		log.Fatalf("Failed to read project ID file: %v error: %v\n", filename, err)
+		return err
+	}
+	lineRegex := regexp.MustCompile(`^[\d|\s]+$`)
+	lines := bytes.Split(data, []byte("\n"))
+	for idx, line := range lines {
+		if !lineRegex.Match(line) && len(line) > 0 {
+			log.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+			log.Errorf("lines must match regex: %v", lineRegex.String())
+			return fmt.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+		}
+		pids = append(pids, string(line))
+	}
+
+	s.ProjectIDs = pids
 	return nil
 }

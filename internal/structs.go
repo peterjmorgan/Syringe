@@ -23,6 +23,7 @@ type Syringe struct {
 	Gitlab          *gitlab.Client
 	PhylumToken     string
 	PhylumGroupName string
+	ProjectIDs      []string
 }
 
 type PhylumProject struct {

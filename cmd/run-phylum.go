@@ -11,7 +11,10 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+var projectIDFileName string
+
 func init() {
+	runPhylumCmd.Flags().StringVar(&projectIDFileName, "pidFilename", "", "project id filename")
 	rootCmd.AddCommand(runPhylumCmd)
 }
 
@@ -28,6 +31,16 @@ var runPhylumCmd = &cobra.Command{
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
 		}
+
+		if cmd.Flags().Lookup("pidFilename").Changed {
+			pidFile := cmd.Flags().Lookup("pidFilename").Value.String()
+			err = s.LoadPidFile(pidFile)
+			if err != nil {
+				return
+			}
+
+		}
+
 		var gitlabProjects *[]*gitlab.Project
 		var phylumProjectMap *map[string]Syringe.PhylumProject
 		var wg sync.WaitGroup
