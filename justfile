@@ -5,9 +5,22 @@ default:
 build:
   go build -v -o Syringe
 
-# go run (local)
-run:
+# clean
+clean:
+  go clean
+  rm *.exe
+  rm go_build*
+
+list-projects:
+  ./Syringe list-projects
+
+# go run-phylum (local)
+run-phylum:
   ./Syringe run-phylum
+
+# go run with pidfile as flag
+run-phylum-pids:
+  ./Syringe run-phylum --pidFilename pids.txt
 
 # docker build image
 docker-build:

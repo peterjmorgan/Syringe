@@ -59,6 +59,10 @@ var listProjectsCmd = &cobra.Command{
 
 				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
 
+				// for _, lf := range lockfiles {
+				//
+				// }
+
 				chProject <- Syringe.GitlabProject{
 					inProject.ID,
 					inProject.Name,
