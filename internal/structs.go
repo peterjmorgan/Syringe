@@ -10,13 +10,13 @@ type GitlabFile struct {
 }
 
 type GitlabProject struct {
-	Id              int
-	Name            string
-	Branch          *gitlab.Branch
-	IsPhylumEnabled bool
-	IsPhylumReady   bool
-	Lockfiles       []*GitlabFile
-	CiFiles         []*GitlabFile
+	Id               int
+	Name             string
+	Branch           *gitlab.Branch
+	NumPhylumEnabled int
+	IsPhylumReady    bool
+	Lockfiles        []*GitlabFile
+	CiFiles          []*GitlabFile
 }
 
 type Syringe struct {

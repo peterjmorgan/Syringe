@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 	"os"
 	"sync"
 
@@ -25,9 +27,10 @@ var listProjectsCmd = &cobra.Command{
 			return
 		}
 		var gitlabProjects *[]*gitlab.Project
+		var phylumProjectMap *map[string]Syringe.PhylumProject
 		var wg sync.WaitGroup
 
-		wg.Add(1)
+		wg.Add(2)
 		go func() {
 			err := s.ListProjects(&gitlabProjects)
 			if err != nil {
@@ -35,6 +38,15 @@ var listProjectsCmd = &cobra.Command{
 				return
 			}
 			wg.Done()
+		}()
+
+		go func() {
+			defer wg.Done()
+			err := s.PhylumGetProjectMap(&phylumProjectMap)
+			if err != nil {
+				log.Fatalf("Failed to PhylumGetProjectMap(): %v\n", err)
+				return
+			}
 		}()
 		wg.Wait()
 
@@ -59,15 +71,19 @@ var listProjectsCmd = &cobra.Command{
 
 				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
 
-				// for _, lf := range lockfiles {
-				//
-				// }
+				var NumPhylumEnabled int
+				for _, lf := range lockfiles {
+					generatedName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
+					if slices.Contains(maps.Keys(*phylumProjectMap), generatedName) {
+						NumPhylumEnabled++
+					}
+				}
 
 				chProject <- Syringe.GitlabProject{
 					inProject.ID,
 					inProject.Name,
 					mainBranch,
-					false,
+					NumPhylumEnabled,
 					false,
 					lockfiles,
 					ciFiles,
@@ -80,15 +96,28 @@ var listProjectsCmd = &cobra.Command{
 		}
 
 		t := table.NewWriter()
+		rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
+		//t.SetAutoIndex(true)
+		t.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, AutoMerge: true},
+			{Number: 2, AutoMerge: true},
+			{Number: 3, AutoMerge: true},
+			{Number: 4, AutoMerge: true},
+		})
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "# LockFiles"})
+		// t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "# LockFiles", "# Phylum Enabled"})
+		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path", "Phylum Enabled"}, rowConfigAutoMerge)
 		for _, lp := range localProjects {
-			t.AppendRow(table.Row{
-				lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, len(lp.Lockfiles),
-			})
+			//phylumEnabled := fmt.Sprintf("%v/%v", lp.NumPhylumEnabled, len(lp.Lockfiles))
+			//t.AppendRow(table.Row{
+			//	lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, len(lp.Lockfiles), phylumEnabled,
+			//})
+			for _, lockfile := range lp.Lockfiles {
+				t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path, "Y"}, rowConfigAutoMerge)
+			}
 		}
+		t.Style().Options.SeparateRows = true
 		t.Render()
-
 	},
 }
