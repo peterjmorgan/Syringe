@@ -88,7 +88,13 @@ func NewSyringe() (*Syringe, error) {
 		phylumGroupName = ""
 	}
 
-	gitlabClient, err := gitlab.NewClient(gitlabToken)
+	gitlabBaseUrl, err := readEnvVar("GITLAB_BASEURL")
+	if err != nil {
+		log.Debugf("GITLAB_BASEURL is not set\n")
+		gitlabBaseUrl = "https://gitlab.com"
+	}
+
+	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)
 		return nil, err
