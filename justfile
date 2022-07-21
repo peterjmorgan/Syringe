@@ -12,11 +12,11 @@ clean:
   rm go_build*
 
 list-projects:
-  ./Syringe list-projects
+  ./Syringe list-projects -m
 
 # go run-phylum (local)
 run-phylum:
-  ./Syringe run-phylum
+  ./Syringe run-phylum -m
 
 # go run with pidfile as flag
 run-phylum-pids:
