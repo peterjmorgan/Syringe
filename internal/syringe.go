@@ -382,7 +382,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 	return createdProjects, nil
 }
 
-func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile) error {
+func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile, phylumProjectName string) error {
 	// create temp directory to write the lockfile content for analyze
 	log.Debugf("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")
@@ -411,7 +411,7 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 	var stdErrBytes bytes.Buffer
 	var AnalyzeCmdArgs = []string{"analyze", lockfile.Name}
 	if s.PhylumGroupName != "" {
-		AnalyzeCmdArgs = append(AnalyzeCmdArgs, "-g")
+		AnalyzeCmdArgs = append(AnalyzeCmdArgs, "-g", s.PhylumGroupName, "--project", phylumProjectName)
 	}
 	projectAnalyzeCmd := exec.Command("phylum", AnalyzeCmdArgs...)
 	projectAnalyzeCmd.Stderr = &stdErrBytes

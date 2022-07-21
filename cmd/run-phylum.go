@@ -73,7 +73,6 @@ var runPhylumCmd = &cobra.Command{
 		go func() {
 			wgLoop.Wait()
 			close(chCreateProjects)
-			// log.Debugf("chProjects channel closed")
 		}()
 		for _, project := range *gitlabProjects {
 			wgLoop.Add(1)
@@ -128,7 +127,7 @@ var runPhylumCmd = &cobra.Command{
 				for _, lf := range lockfiles {
 					ppName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
 					phylumProjectFile := (*phylumProjectMap)[ppName]
-					err = s.PhylumRunAnalyze(phylumProjectFile, lf)
+					err = s.PhylumRunAnalyze(phylumProjectFile, lf, ppName)
 				}
 			}(*project)
 		}
