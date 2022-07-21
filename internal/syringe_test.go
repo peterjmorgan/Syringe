@@ -370,3 +370,34 @@ func TestSyringe_PhylumRunAnalyze(t *testing.T) {
 		})
 	}
 }
+
+func TestSyringe_LoadPidFile(t *testing.T) {
+	type fields struct {
+		Gitlab          *gitlab.Client
+		PhylumToken     string
+		PhylumGroupName string
+	}
+	type args struct {
+		filename string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Syringe{
+				Gitlab:          tt.fields.Gitlab,
+				PhylumToken:     tt.fields.PhylumToken,
+				PhylumGroupName: tt.fields.PhylumGroupName,
+			}
+			if err := s.LoadPidFile(tt.args.filename); (err != nil) != tt.wantErr {
+				t.Errorf("LoadPidFile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

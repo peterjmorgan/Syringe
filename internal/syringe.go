@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -68,7 +69,7 @@ func init() {
 	}
 	mw := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(mw)
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.InfoLevel)
 }
 
 func NewSyringe() (*Syringe, error) {
@@ -76,14 +77,14 @@ func NewSyringe() (*Syringe, error) {
 	if err != nil {
 		log.Fatalf("Failed to read gitlab token from ENV\n")
 	}
-	phylumToken, err := readEnvVar("PHYLUM_TOKEN")
+	phylumToken, err := readEnvVar("PHYLUM_API_KEY")
 	if err != nil {
-		log.Fatalf("Failed to read phylum token from ENV\n")
+		log.Fatalf("Failed to read phylum api key from ENV\n")
 	}
 
 	phylumGroupName, err := readEnvVar("PHYLUM_GROUP_NAME")
 	if err != nil {
-		log.Infof("PHYLUM_GROUP is not set\n")
+		log.Debugf("PHYLUM_GROUP is not set\n")
 		phylumGroupName = ""
 	}
 
@@ -97,16 +98,19 @@ func NewSyringe() (*Syringe, error) {
 		Gitlab:          gitlabClient,
 		PhylumToken:     phylumToken,
 		PhylumGroupName: phylumGroupName,
+		ProjectIDs:      []string{},
 	}, nil
 }
 
-func (s *Syringe) ListProjects() ([]*gitlab.Project, error) {
-	projects, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(true)})
+func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
+	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(true)})
 	if err != nil {
 		log.Errorf("Failed to list gitlab projects: %v\n", err)
-		return nil, err
+		return err
 	}
-	return projects, nil
+	log.Debugf("Len of gitlab projects: %v\n", len(temp))
+	*projects = &temp
+	return nil
 }
 
 func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
@@ -116,6 +120,18 @@ func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
 		return nil, err
 	}
 	return branches, nil
+}
+
+func (s *Syringe) PrintProjectVariables(projectId int) error {
+	variables, _, err := s.Gitlab.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
+	if err != nil {
+		log.Errorf("Failed to list project variables from %v: %v\n", projectId, err)
+		return err
+	}
+	for _, variable := range variables {
+		log.Infof("Variable: %v:%v\n", variable.Key, variable.Value)
+	}
+	return nil
 }
 
 func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, error) {
@@ -203,7 +219,6 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 
 	supportedLockfiles := getSupportedLockfiles()
 	supportedciFiles := getCiFiles()
-	// TODO: make gofunc
 	for _, file := range projectFiles {
 		if slices.Contains(supportedLockfiles, file.Name) {
 			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranch.Name})
@@ -225,15 +240,19 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 	return retLockFiles, retCiFiles, nil
 }
 
-func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
+func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	var stdErrBytes bytes.Buffer
-	projectListCmd := exec.Command("phylum", "project", "list", "--json")
+	var projectListArgs = []string{"project", "list", "--json"}
+	if s.PhylumGroupName != "" {
+		projectListArgs = append(projectListArgs, "-g", s.PhylumGroupName)
+	}
+	projectListCmd := exec.Command("phylum", projectListArgs...)
 	projectListCmd.Stderr = &stdErrBytes
 	output, err := projectListCmd.Output()
 	if err != nil {
 		log.Errorf("Failed to exec 'phylum project list': %v\n", err)
 		log.Errorf(stdErrBytes.String())
-		return nil, err
+		return err
 	}
 	stdErrString := stdErrBytes.String()
 	_ = stdErrString // prob will need this later
@@ -241,14 +260,16 @@ func (s *Syringe) PhylumGetProjectMap() (map[string]PhylumProject, error) {
 	var PhylumProjectList []PhylumProject
 	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
 		log.Errorf("Failed to unmarshal JSON: %v\n", err)
-		return nil, err
+		return err
 	}
 
 	returnMap := make(map[string]PhylumProject, 0)
 	for _, elem := range PhylumProjectList {
 		returnMap[elem.Name] = elem
 	}
-	return returnMap, nil
+	log.Debugf("Found %v phylum projects\n", len(returnMap))
+	*retVal = &returnMap
+	return nil
 }
 
 func (s *Syringe) GeneratePhylumProjectName(projectName string, lockfilePath string) string {
@@ -260,6 +281,51 @@ func RemoveTempDir(tempDir string) {
 	if err != nil {
 		log.Errorf("Failed to remove temp directory %v:%v\n", tempDir, err)
 	}
+}
+
+func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {
+	for projectName := range projectNames {
+		tempDir, err := ioutil.TempDir("", "syringe-create")
+		if err != nil {
+			log.Errorf("Failed to create temp directory: %v\n", err)
+			return err
+		}
+		defer RemoveTempDir(tempDir)
+
+		var stdErrBytes bytes.Buffer
+		var CreateCmdArgs = []string{"project", "create", projectName}
+		if s.PhylumGroupName != "" {
+			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
+		}
+		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
+		projectCreateCmd.Stderr = &stdErrBytes
+		projectCreateCmd.Dir = tempDir
+		err = projectCreateCmd.Run()
+		stdErrString := stdErrBytes.String()
+		if err != nil {
+			log.Errorf("Failed to exec 'phylum project create %v': %v\n", projectName, err)
+			log.Errorf("%v\n", stdErrString)
+			return err
+		} else {
+			log.Debugf("Created phylum project: %v\n", projectName)
+		}
+
+		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+		phylumProjectData, err := os.ReadFile(phylumProjectFile)
+		if err != nil {
+			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
+			return err
+		}
+
+		phylumProject := PhylumProject{}
+		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
+		if err != nil {
+			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", projectName, err)
+			return err
+		}
+		projects <- phylumProject
+	}
+	return nil
 }
 
 func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]PhylumProject, error) {
@@ -311,6 +377,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 
 func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile) error {
 	// create temp directory to write the lockfile content for analyze
+	log.Debugf("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")
 	if err != nil {
 		log.Errorf("Failed to create temp directory: %v\n", err)
@@ -335,10 +402,7 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 	err = os.WriteFile(dotPhylumProjectFile, dotPhylumProjectData, 0644)
 
 	var stdErrBytes bytes.Buffer
-	var AnalyzeCmdArgs = []string{
-		"analyze",
-		lockfile.Name,
-	}
+	var AnalyzeCmdArgs = []string{"analyze", lockfile.Name}
 	if s.PhylumGroupName != "" {
 		AnalyzeCmdArgs = append(AnalyzeCmdArgs, "-g")
 	}
@@ -352,7 +416,32 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 		log.Errorf("%v\n", stdErrString)
 		return err
 	} else {
-		log.Infof("Phylum Analyzed: %v\n", phylumProjectFile.Name)
+		log.Debugf("Phylum Analyzed: %v\n", phylumProjectFile.Name)
 	}
+	return nil
+}
+
+// LoadPidFile Read a text file of project IDs to operate on
+// The text file should have one project ID per line
+func (s *Syringe) LoadPidFile(filename string) error {
+	var pids []string
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		log.Fatalf("Failed to read project ID file: %v error: %v\n", filename, err)
+		return err
+	}
+	lineRegex := regexp.MustCompile(`^[\d|\s]+$`)
+	lines := bytes.Split(data, []byte("\n"))
+	for idx, line := range lines {
+		if !lineRegex.Match(line) && len(line) > 0 {
+			log.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+			log.Errorf("lines must match regex: %v", lineRegex.String())
+			return fmt.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+		}
+		pids = append(pids, string(line))
+	}
+
+	s.ProjectIDs = pids
 	return nil
 }
