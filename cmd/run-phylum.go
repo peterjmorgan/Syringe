@@ -22,11 +22,17 @@ var runPhylumCmd = &cobra.Command{
 	Use:   "run-phylum",
 	Short: "Run Phylum on GitLab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
+		var mineOnly bool = false
+
 		if cmd.Flags().Lookup("debug").Changed {
 			log.SetLevel(log.DebugLevel)
 		}
 
-		s, err := Syringe.NewSyringe()
+		if cmd.Flags().Lookup("mine-only").Changed {
+			mineOnly = true
+		}
+
+		s, err := Syringe.NewSyringe(mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
