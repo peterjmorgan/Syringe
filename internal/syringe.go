@@ -72,7 +72,7 @@ func init() {
 	log.SetLevel(log.InfoLevel)
 }
 
-func NewSyringe() (*Syringe, error) {
+func NewSyringe(mineOnly bool) (*Syringe, error) {
 	gitlabToken, err := readEnvVar("GITLAB_TOKEN")
 	if err != nil {
 		log.Fatalf("Failed to read gitlab token from ENV\n")
@@ -105,11 +105,12 @@ func NewSyringe() (*Syringe, error) {
 		PhylumToken:     phylumToken,
 		PhylumGroupName: phylumGroupName,
 		ProjectIDs:      []string{},
+		MineOnly:        mineOnly,
 	}, nil
 }
 
 func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
-	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(false)})
+	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(s.MineOnly)})
 	if err != nil {
 		log.Errorf("Failed to list gitlab projects: %v\n", err)
 		return err
