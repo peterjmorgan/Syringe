@@ -24,6 +24,7 @@ type Syringe struct {
 	PhylumToken     string
 	PhylumGroupName string
 	ProjectIDs      []string
+	MineOnly        bool
 }
 
 type PhylumProject struct {
