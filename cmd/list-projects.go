@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	"os"
 	"sync"
+
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	Syringe "github.com/peterjmorgan/Syringe/internal"
@@ -97,7 +98,7 @@ var listProjectsCmd = &cobra.Command{
 
 		t := table.NewWriter()
 		rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
-		//t.SetAutoIndex(true)
+		// t.SetAutoIndex(true)
 		t.SetColumnConfigs([]table.ColumnConfig{
 			{Number: 1, AutoMerge: true},
 			{Number: 2, AutoMerge: true},
@@ -106,13 +107,8 @@ var listProjectsCmd = &cobra.Command{
 		})
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
-		// t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "# LockFiles", "# Phylum Enabled"})
 		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path", "Phylum Enabled"}, rowConfigAutoMerge)
 		for _, lp := range localProjects {
-			//phylumEnabled := fmt.Sprintf("%v/%v", lp.NumPhylumEnabled, len(lp.Lockfiles))
-			//t.AppendRow(table.Row{
-			//	lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, len(lp.Lockfiles), phylumEnabled,
-			//})
 			for _, lockfile := range lp.Lockfiles {
 				t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path, "Y"}, rowConfigAutoMerge)
 			}
