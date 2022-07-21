@@ -109,7 +109,7 @@ func NewSyringe() (*Syringe, error) {
 }
 
 func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
-	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(false)})
+	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(true)})
 	if err != nil {
 		log.Errorf("Failed to list gitlab projects: %v\n", err)
 		return err
@@ -213,7 +213,8 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 
 	mainBranch, err := s.IdentifyMainBranch(projectId)
 	if err != nil {
-		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
+		// TODO: this needs to pass when repos don't have code
+		log.Infof("Failed to IdentifyMainBranch: %v\n", err)
 		return nil, nil, err
 	}
 

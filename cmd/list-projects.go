@@ -66,7 +66,7 @@ var listProjectsCmd = &cobra.Command{
 				defer wgLoop.Done()
 				mainBranch, err := s.IdentifyMainBranch(inProject.ID)
 				if err != nil {
-					log.Fatalf("Failed to IdentifyMainBranch(): %v\n", err)
+					log.Infof("Failed to IdentifyMainBranch(): %v\n", err)
 					return
 				}
 

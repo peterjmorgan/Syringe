@@ -82,7 +82,7 @@ var runPhylumCmd = &cobra.Command{
 
 				lockfiles, _, err := s.EnumerateTargetFiles(inProject.ID)
 				if err != nil {
-					log.Errorf("Failed to EnumerateTargetFiles(): %v\n", err)
+					log.Infof("Failed to EnumerateTargetFiles(): %v\n", err)
 					return
 				}
 
@@ -121,7 +121,7 @@ var runPhylumCmd = &cobra.Command{
 
 				lockfiles, _, err := s.EnumerateTargetFiles(inProject.ID)
 				if err != nil {
-					log.Errorf("Failed to EnumerateTargetFiles(): %v\n", err)
+					log.Infof("Failed to EnumerateTargetFiles(): %v\n", err)
 					return
 				}
 
