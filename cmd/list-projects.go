@@ -22,7 +22,12 @@ var listProjectsCmd = &cobra.Command{
 	Use:   "list-projects",
 	Short: "List Gitlab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := Syringe.NewSyringe()
+		var mineOnly bool = false
+		if cmd.Flags().Lookup("mine-only").Changed {
+			mineOnly = true
+		}
+
+		s, err := Syringe.NewSyringe(mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
@@ -107,10 +112,10 @@ var listProjectsCmd = &cobra.Command{
 		})
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path", "Phylum Enabled"}, rowConfigAutoMerge)
+		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path"}, rowConfigAutoMerge)
 		for _, lp := range localProjects {
 			for _, lockfile := range lp.Lockfiles {
-				t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path, "Y"}, rowConfigAutoMerge)
+				t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path}, rowConfigAutoMerge)
 			}
 		}
 		t.Style().Options.SeparateRows = true
