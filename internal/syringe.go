@@ -110,13 +110,37 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 }
 
 func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
-	temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(s.MineOnly)})
-	if err != nil {
-		log.Errorf("Failed to list gitlab projects: %v\n", err)
-		return err
+
+	opt := &gitlab.ListProjectsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    0,
+		},
 	}
-	log.Debugf("Len of gitlab projects: %v\n", len(temp))
-	*projects = &temp
+
+	var localProjects []*gitlab.Project
+
+	for {
+		temp, resp, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(s.MineOnly)})
+		if err != nil {
+			log.Errorf("Failed to list gitlab projects: %v\n", err)
+			return err
+		}
+		localProjects = append(localProjects, temp...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+	// TODO: remove me
+	// temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(s.MineOnly)})
+	// if err != nil {
+	// 	log.Errorf("Failed to list gitlab projects: %v\n", err)
+	// 	return err
+	// }
+	log.Debugf("Len of gitlab projects: %v\n", len(localProjects))
+	*projects = &localProjects
 	return nil
 }
 
