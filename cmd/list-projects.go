@@ -27,6 +27,10 @@ var listProjectsCmd = &cobra.Command{
 			mineOnly = true
 		}
 
+		if cmd.Flags().Lookup("debug").Changed {
+			log.SetLevel(log.DebugLevel)
+		}
+
 		s, err := Syringe.NewSyringe(mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
