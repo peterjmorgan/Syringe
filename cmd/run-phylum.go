@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	Syringe "github.com/peterjmorgan/Syringe/internal"
+	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/xanzy/go-gitlab"
@@ -87,7 +88,7 @@ var runPhylumCmd = &cobra.Command{
 
 				lockfiles, _, err := s.EnumerateTargetFiles(inProject.ID)
 				if err != nil {
-					log.Infof("Failed to EnumerateTargetFiles(): %v\n", err)
+					log.Debugf("Failed to EnumerateTargetFiles(): %v\n", err)
 					return
 				}
 
@@ -105,18 +106,23 @@ var runPhylumCmd = &cobra.Command{
 							}
 						}()
 					} else {
-						log.Infof("Found Phylum project for %v : %v\n", inProject.Name, tempName)
+						log.Debugf("Found Phylum project for %v : %v\n", inProject.Name, tempName)
 					}
 				}
 			}(*project)
 		}
 
 		// recv from channel to block until create loop is complete
-		close(chProjectResults)
-		for item := range chProjectResults {
-			log.Debugf("recv'd projectResult: %v\n", item.Name)
-			(*phylumProjectMap)[item.Name] = item
-		}
+
+		go func() {
+			for item := range chProjectResults {
+				log.Debugf("recv'd projectResult: %v\n", item.Name)
+				(*phylumProjectMap)[item.Name] = item
+			}
+			close(chProjectResults)
+		}()
+
+		bar := progressbar.New64(int64(len(*gitlabProjects) * 2))
 
 		// Phylum analyze loop
 		for _, project := range *gitlabProjects {
@@ -126,15 +132,17 @@ var runPhylumCmd = &cobra.Command{
 
 				lockfiles, _, err := s.EnumerateTargetFiles(inProject.ID)
 				if err != nil {
-					log.Infof("Failed to EnumerateTargetFiles(): %v\n", err)
+					log.Debugf("Failed to EnumerateTargetFiles(): %v\n", err)
 					return
 				}
 
+				bar.Add(1)
 				for _, lf := range lockfiles {
 					ppName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
 					phylumProjectFile := (*phylumProjectMap)[ppName]
 					err = s.PhylumRunAnalyze(phylumProjectFile, lf, ppName)
 				}
+				bar.Add(1)
 			}(*project)
 		}
 		wgLoop.Wait()
