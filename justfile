@@ -12,7 +12,7 @@ clean:
   rm go_build*
 
 list-projects:
-  ./Syringe list-projects -m
+  ./Syringe list-projects -m -d
 
 # go run-phylum (local)
 run-phylum:

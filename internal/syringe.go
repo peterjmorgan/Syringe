@@ -116,12 +116,14 @@ func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
 			PerPage: 100,
 			Page:    0,
 		},
+		Owned: gitlab.Bool(s.MineOnly),
 	}
 
+	// ch := make(chan []*gitlab.Project)
 	var localProjects []*gitlab.Project
 
 	for {
-		temp, resp, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(s.MineOnly)})
+		temp, resp, err := s.Gitlab.Projects.ListProjects(opt)
 		if err != nil {
 			log.Errorf("Failed to list gitlab projects: %v\n", err)
 			return err
@@ -132,13 +134,9 @@ func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
 			break
 		}
 		opt.Page = resp.NextPage
+		log.Debugf("ListProjects() paging to page #%v\n", opt.Page)
 	}
-	// TODO: remove me
-	// temp, _, err := s.Gitlab.Projects.ListProjects(&gitlab.ListProjectsOptions{Owned: gitlab.Bool(s.MineOnly)})
-	// if err != nil {
-	// 	log.Errorf("Failed to list gitlab projects: %v\n", err)
-	// 	return err
-	// }
+
 	log.Debugf("Len of gitlab projects: %v\n", len(localProjects))
 	*projects = &localProjects
 	return nil
