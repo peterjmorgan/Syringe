@@ -4,6 +4,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/schollz/progressbar/v3"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
@@ -63,6 +64,7 @@ var listProjectsCmd = &cobra.Command{
 		var localProjects []Syringe.GitlabProject
 		chProject := make(chan Syringe.GitlabProject)
 		var wgLoop sync.WaitGroup
+		bar := progressbar.New64(int64(len(*gitlabProjects) * 2))
 
 		go func() {
 			wgLoop.Wait()
@@ -73,13 +75,16 @@ var listProjectsCmd = &cobra.Command{
 			wgLoop.Add(1)
 			go func(inProject gitlab.Project) {
 				defer wgLoop.Done()
+				// defer bar.Add(1)
 				mainBranch, err := s.IdentifyMainBranch(inProject.ID)
 				if err != nil {
 					log.Infof("Failed to IdentifyMainBranch(): %v\n", err)
 					return
 				}
+				bar.Add(1)
 
 				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
+				bar.Add(1)
 
 				var NumPhylumEnabled int
 				for _, lf := range lockfiles {
