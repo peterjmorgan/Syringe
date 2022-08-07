@@ -1,6 +1,8 @@
-package PhylumSyringGitlab
+package Syringe
 
-import "github.com/xanzy/go-gitlab"
+import (
+	"github.com/xanzy/go-gitlab"
+)
 
 type GitlabFile struct {
 	Name    string
@@ -9,7 +11,7 @@ type GitlabFile struct {
 	Content []byte
 }
 
-type GitlabProject struct {
+type SyringeProject struct {
 	Id               int
 	Name             string
 	Branch           *gitlab.Branch
@@ -20,7 +22,7 @@ type GitlabProject struct {
 }
 
 type Syringe struct {
-	Gitlab          *gitlab.Client
+	Client          Client
 	PhylumToken     string
 	PhylumGroupName string
 	ProjectIDs      []string

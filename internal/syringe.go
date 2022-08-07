@@ -1,10 +1,9 @@
-package PhylumSyringGitlab
+package Syringe
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -12,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/gosuri/uiprogress"
+	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
 	"golang.org/x/exp/slices"
@@ -39,7 +40,7 @@ func getSupportedLockfiles() []string {
 }
 
 // CI Files to target
-func getCiFiles() []string {
+func getGitlabCIFiles() []string {
 	return []string{
 		".gitlab-ci.yml",
 		".gitlab-ci.yaml",
@@ -57,19 +58,20 @@ func readEnvVar(key string) (string, error) {
 func init() {
 	// setup logging
 	log.SetReportCaller(false)
-	log.SetFormatter(&log.TextFormatter{
-		ForceColors:            true,
-		FullTimestamp:          true,
-		DisableLevelTruncation: false,
-		DisableTimestamp:       false,
-	})
-	logFile, err := os.OpenFile("LOG_PhylumSyringeGitlab.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	// log.SetFormatter(&log.TextFormatter{
+	// 	ForceColors:            false,
+	// 	FullTimestamp:          true,
+	// 	DisableLevelTruncation: false,
+	// 	DisableTimestamp:       false,
+	// })
+	logFile, err := os.OpenFile("LOG_Syringe.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Println("Error: failed to open logfile")
 	}
-	mw := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(mw)
+	// mw := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(logFile)
 	log.SetLevel(log.InfoLevel)
+	uiprogress.Start()
 }
 
 func NewSyringe(mineOnly bool) (*Syringe, error) {
@@ -94,14 +96,20 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 		gitlabBaseUrl = "https://gitlab.com"
 	}
 
-	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
+	// gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
+	// if err != nil {
+	// 	log.Fatalf("Failed to create gitlab client: %v\n", err)
+	// 	return nil, err
+	// }
+	// client := GitlabClient.getClient(gitlabToken, gitlabBaseUrl)
+
+	client, err := NewClient(GitlabType, gitlabToken, gitlabBaseUrl)
 	if err != nil {
-		log.Fatalf("Failed to create gitlab client: %v\n", err)
-		return nil, err
+		log.Fatalf("Failed to create client: %v\n", err)
 	}
 
 	return &Syringe{
-		Gitlab:          gitlabClient,
+		Client:          client,
 		PhylumToken:     phylumToken,
 		PhylumGroupName: phylumGroupName,
 		ProjectIDs:      []string{},
@@ -109,11 +117,11 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 	}, nil
 }
 
-func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
+func (s *Syringe) GitlabListProjects(projects **[]SyringeProject) error {
 
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{
-			PerPage: 100,
+			PerPage: 10,
 			Page:    0,
 		},
 		Owned: gitlab.Bool(s.MineOnly),
@@ -122,19 +130,31 @@ func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
 	// ch := make(chan []*gitlab.Project)
 	var localProjects []*gitlab.Project
 
+	_, resp, err := s.Gitlab.Projects.ListProjects(opt)
+	if err != nil {
+		log.Errorf("Failed to list gitlab projects: %v\n", err)
+		return err
+	}
+	count := resp.TotalPages
+	// listProjectsBar := uiprogress.AddBar(count).AppendCompleted().PrependElapsed()
+	lPbar := progressbar.New64(int64(count))
+
 	for {
+		// listProjectsBar.Incr()
+		lPbar.Add(1)
+
 		temp, resp, err := s.Gitlab.Projects.ListProjects(opt)
 		if err != nil {
 			log.Errorf("Failed to list gitlab projects: %v\n", err)
 			return err
 		}
 		localProjects = append(localProjects, temp...)
-
 		if resp.NextPage == 0 {
 			break
 		}
 		opt.Page = resp.NextPage
 		log.Debugf("ListProjects() paging to page #%v\n", opt.Page)
+
 	}
 
 	log.Debugf("Len of gitlab projects: %v\n", len(localProjects))
@@ -248,7 +268,7 @@ func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabF
 	}
 
 	supportedLockfiles := getSupportedLockfiles()
-	supportedciFiles := getCiFiles()
+	supportedciFiles := getGitlabCIFiles()
 	for _, file := range projectFiles {
 		if slices.Contains(supportedLockfiles, file.Name) {
 			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranch.Name})

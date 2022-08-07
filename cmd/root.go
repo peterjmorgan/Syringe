@@ -40,4 +40,5 @@ func init() {
 	// when this action is called directly.
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug logging")
 	rootCmd.PersistentFlags().BoolP("mine-only", "m", false, "Mine (owned) projects only")
+	rootCmd.PersistentFlags().Int32P("threads", "t", -1, "Threads ")
 }

@@ -4,7 +4,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
@@ -32,7 +31,8 @@ var listProjectsCmd = &cobra.Command{
 			log.SetLevel(log.DebugLevel)
 		}
 
-		s, err := Syringe.NewSyringe(mineOnly)
+		client, err := Syringe.NewClient(Syringe.GitlabType, "foo", "blah")
+		s, err := Syringe.NewSyringe(client, mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
@@ -61,10 +61,10 @@ var listProjectsCmd = &cobra.Command{
 		}()
 		wg.Wait()
 
-		var localProjects []Syringe.GitlabProject
-		chProject := make(chan Syringe.GitlabProject)
+		var localProjects []Syringe.SyringeProject
+		chProject := make(chan Syringe.SyringeProject)
 		var wgLoop sync.WaitGroup
-		bar := progressbar.New64(int64(len(*gitlabProjects) * 2))
+		// bar := progressbar.New64(int64(len(*gitlabProjects) * 2))
 
 		go func() {
 			wgLoop.Wait()
@@ -81,10 +81,10 @@ var listProjectsCmd = &cobra.Command{
 					log.Infof("Failed to IdentifyMainBranch(): %v\n", err)
 					return
 				}
-				bar.Add(1)
+				// bar.Add(1)
 
 				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
-				bar.Add(1)
+				// bar.Add(1)
 
 				var NumPhylumEnabled int
 				for _, lf := range lockfiles {
@@ -94,7 +94,7 @@ var listProjectsCmd = &cobra.Command{
 					}
 				}
 
-				chProject <- Syringe.GitlabProject{
+				chProject <- Syringe.SyringeProject{
 					inProject.ID,
 					inProject.Name,
 					mainBranch,
