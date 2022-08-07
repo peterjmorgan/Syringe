@@ -4,11 +4,11 @@ import (
 	"os"
 	"sync"
 
+	Syringe "github.com/peterjmorgan/Syringe/internal"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	Syringe "github.com/peterjmorgan/Syringe/internal"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/xanzy/go-gitlab"
@@ -31,8 +31,9 @@ var listProjectsCmd = &cobra.Command{
 			log.SetLevel(log.DebugLevel)
 		}
 
-		client, err := Syringe.NewClient(Syringe.GitlabType, "foo", "blah")
-		s, err := Syringe.NewSyringe(client, mineOnly)
+		// client, err := Syringe.NewClient(Syringe.GitlabType, "foo", "blah")
+
+		s, err := Syringe.NewSyringe(mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return

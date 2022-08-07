@@ -1,4 +1,4 @@
-package Syringe
+package syringe
 
 import (
 	"os"

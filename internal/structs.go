@@ -1,10 +1,10 @@
-package Syringe
+package syringe
 
 import (
 	"github.com/xanzy/go-gitlab"
 )
 
-type GitlabFile struct {
+type VcsFile struct {
 	Name    string
 	Path    string
 	Id      string
@@ -17,16 +17,8 @@ type SyringeProject struct {
 	Branch           *gitlab.Branch
 	NumPhylumEnabled int
 	IsPhylumReady    bool
-	Lockfiles        []*GitlabFile
-	CiFiles          []*GitlabFile
-}
-
-type Syringe struct {
-	Client          Client
-	PhylumToken     string
-	PhylumGroupName string
-	ProjectIDs      []string
-	MineOnly        bool
+	Lockfiles        []*VcsFile
+	CiFiles          []*VcsFile
 }
 
 type PhylumProject struct {
