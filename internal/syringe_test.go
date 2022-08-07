@@ -1,4 +1,4 @@
-package PhylumSyringGitlab
+package Syringe
 
 import (
 	"os"
