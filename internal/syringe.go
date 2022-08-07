@@ -1,4 +1,4 @@
-package Syringe
+package syringe
 
 import (
 	"bytes"
@@ -12,48 +12,9 @@ import (
 	"strings"
 
 	"github.com/gosuri/uiprogress"
-	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
-	"github.com/xanzy/go-gitlab"
-	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v2"
 )
-
-// Branches to examine for "main" branch
-func getMainBranchSlice() []string {
-	return []string{
-		"master",
-		"main",
-	}
-}
-
-// Lockfiles to target
-func getSupportedLockfiles() []string {
-	return []string{
-		"package-lock.json",
-		"yarn.lock",
-		"requirements.txt",
-		"poetry.lock",
-		"pom.xml",
-		"Gemfile.lock",
-	}
-}
-
-// CI Files to target
-func getGitlabCIFiles() []string {
-	return []string{
-		".gitlab-ci.yml",
-		".gitlab-ci.yaml",
-	}
-}
-
-func readEnvVar(key string) (string, error) {
-	if value, ok := os.LookupEnv(key); ok {
-		return value, nil
-	} else {
-		return "", fmt.Errorf("Failed to read environment variable: %v\n", key)
-	}
-}
 
 func init() {
 	// setup logging
@@ -74,7 +35,21 @@ func init() {
 	uiprogress.Start()
 }
 
+type Syringe struct {
+	Client          Client
+	PhylumToken     string
+	PhylumGroupName string
+	ProjectIDs      []string
+	MineOnly        bool
+}
+
 func NewSyringe(mineOnly bool) (*Syringe, error) {
+	var vcsType ClientType
+	vcsValue, err := readEnvVar("SYRINGE_VCS")
+	if err != nil {
+		log.Fatalf("Failed to read syringe vcs type from ENV\n")
+	}
+
 	gitlabToken, err := readEnvVar("GITLAB_TOKEN")
 	if err != nil {
 		log.Fatalf("Failed to read gitlab token from ENV\n")
@@ -96,14 +71,12 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 		gitlabBaseUrl = "https://gitlab.com"
 	}
 
-	// gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
-	// if err != nil {
-	// 	log.Fatalf("Failed to create gitlab client: %v\n", err)
-	// 	return nil, err
-	// }
-	// client := GitlabClient.getClient(gitlabToken, gitlabBaseUrl)
-
-	client, err := NewClient(GitlabType, gitlabToken, gitlabBaseUrl)
+	if vcsValue == "gitlab" {
+		vcsType = 1
+	} else if vcsValue == "github" {
+		vcsType = 0
+	}
+	client, err := NewClient(vcsType, gitlabToken, gitlabBaseUrl)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v\n", err)
 	}
@@ -115,179 +88,6 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 		ProjectIDs:      []string{},
 		MineOnly:        mineOnly,
 	}, nil
-}
-
-func (s *Syringe) GitlabListProjects(projects **[]SyringeProject) error {
-
-	opt := &gitlab.ListProjectsOptions{
-		ListOptions: gitlab.ListOptions{
-			PerPage: 10,
-			Page:    0,
-		},
-		Owned: gitlab.Bool(s.MineOnly),
-	}
-
-	// ch := make(chan []*gitlab.Project)
-	var localProjects []*gitlab.Project
-
-	_, resp, err := s.Gitlab.Projects.ListProjects(opt)
-	if err != nil {
-		log.Errorf("Failed to list gitlab projects: %v\n", err)
-		return err
-	}
-	count := resp.TotalPages
-	// listProjectsBar := uiprogress.AddBar(count).AppendCompleted().PrependElapsed()
-	lPbar := progressbar.New64(int64(count))
-
-	for {
-		// listProjectsBar.Incr()
-		lPbar.Add(1)
-
-		temp, resp, err := s.Gitlab.Projects.ListProjects(opt)
-		if err != nil {
-			log.Errorf("Failed to list gitlab projects: %v\n", err)
-			return err
-		}
-		localProjects = append(localProjects, temp...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opt.Page = resp.NextPage
-		log.Debugf("ListProjects() paging to page #%v\n", opt.Page)
-
-	}
-
-	log.Debugf("Len of gitlab projects: %v\n", len(localProjects))
-	*projects = &localProjects
-	return nil
-}
-
-func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
-	branches, _, err := s.Gitlab.Branches.ListBranches(projectId, &gitlab.ListBranchesOptions{})
-	if err != nil {
-		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
-		return nil, err
-	}
-	return branches, nil
-}
-
-func (s *Syringe) PrintProjectVariables(projectId int) error {
-	variables, _, err := s.Gitlab.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
-	if err != nil {
-		log.Errorf("Failed to list project variables from %v: %v\n", projectId, err)
-		return err
-	}
-	for _, variable := range variables {
-		log.Infof("Variable: %v:%v\n", variable.Key, variable.Value)
-	}
-	return nil
-}
-
-func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, error) {
-	files, _, err := s.Gitlab.Repositories.ListTree(projectId, &gitlab.ListTreeOptions{
-		Path:      gitlab.String("/"),
-		Ref:       gitlab.String(branch),
-		Recursive: gitlab.Bool(true),
-	})
-	if err != nil {
-		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
-		return nil, err
-	}
-	return files, nil
-}
-
-func (s *Syringe) IdentifyMainBranch(projectId int) (*gitlab.Branch, error) {
-	branches, err := s.ListBranches(projectId)
-	if err != nil {
-		return nil, err
-	}
-
-	mainBranchSlice := getMainBranchSlice()
-
-	foundBranches := make([]*gitlab.Branch, 0)
-	for _, branch := range branches {
-		if slices.Contains(mainBranchSlice, branch.Name) {
-			foundBranches = append(foundBranches, branch)
-		}
-	}
-
-	var ret *gitlab.Branch
-	var retErr error
-
-	switch len(foundBranches) {
-	case 0:
-		ret = nil
-		retErr = fmt.Errorf("No main branch found: %v\n", projectId)
-	case 1:
-		ret = foundBranches[0]
-		retErr = nil
-	case 2:
-		for _, branch := range foundBranches {
-			if branch.Name == "master" {
-				ret = branch
-				retErr = nil
-			}
-		}
-	default:
-		ret = nil
-		retErr = fmt.Errorf("IdentifyMainBranch error: shouldn't happen %v\n", projectId)
-	}
-	return ret, retErr
-}
-
-func (s *Syringe) GetFileTreeFromProject(projectId int) ([]*gitlab.TreeNode, error) {
-	mainBranch, err := s.IdentifyMainBranch(projectId)
-	if err != nil {
-		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
-		return nil, err
-	}
-
-	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
-	if err != nil {
-		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
-		return nil, err
-	}
-	return projectFiles, nil
-}
-
-func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabFile, error) {
-	var retLockFiles []*GitlabFile
-	var retCiFiles []*GitlabFile
-
-	mainBranch, err := s.IdentifyMainBranch(projectId)
-	if err != nil {
-		// TODO: this needs to pass when repos don't have code
-		log.Infof("Failed to IdentifyMainBranch: %v\n", err)
-		return nil, nil, err
-	}
-
-	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
-	if err != nil {
-		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
-		return nil, nil, err
-	}
-
-	supportedLockfiles := getSupportedLockfiles()
-	supportedciFiles := getGitlabCIFiles()
-	for _, file := range projectFiles {
-		if slices.Contains(supportedLockfiles, file.Name) {
-			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranch.Name})
-			if err != nil {
-				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
-			}
-			rec := GitlabFile{file.Name, file.Path, file.ID, data}
-			retLockFiles = append(retLockFiles, &rec)
-		}
-		if slices.Contains(supportedciFiles, file.Name) {
-			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{})
-			if err != nil {
-				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
-			}
-			rec := GitlabFile{file.Name, file.Path, file.ID, data}
-			retCiFiles = append(retCiFiles, &rec)
-		}
-	}
-	return retLockFiles, retCiFiles, nil
 }
 
 func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
@@ -320,17 +120,6 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	log.Debugf("Found %v phylum projects\n", len(returnMap))
 	*retVal = &returnMap
 	return nil
-}
-
-func (s *Syringe) GeneratePhylumProjectName(projectName string, lockfilePath string) string {
-	return fmt.Sprintf("SYR-%v__%v", projectName, lockfilePath)
-}
-
-func RemoveTempDir(tempDir string) {
-	err := os.RemoveAll(tempDir)
-	if err != nil {
-		log.Errorf("Failed to remove temp directory %v:%v\n", tempDir, err)
-	}
 }
 
 func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {

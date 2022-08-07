@@ -1,9 +1,10 @@
-package Syringe
+package syringe
 
 import (
 	"context"
 
 	"github.com/google/go-github/github"
+	Syringe "github.com/peterjmorgan/Syringe/internal"
 	"golang.org/x/oauth2"
 )
 
@@ -22,6 +23,7 @@ func NewGithubClient(githubToken string, githubBaseUrl string) *GithubClient {
 	return &GithubClient{Client: gh, Ctx: ctx}
 }
 
-func (g *GithubClient) listProjects() {
+func (g *GithubClient) ListProjects(projects **[]*Syringe.SyringeProject) error {
 
+	return nil
 }

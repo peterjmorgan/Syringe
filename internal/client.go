@@ -1,4 +1,6 @@
-package Syringe
+package syringe
+
+import syringe "github.com/peterjmorgan/Syringe/internal/client"
 
 type ClientType int
 
@@ -8,7 +10,7 @@ const (
 )
 
 type Client interface {
-	listProjects()
+	ListProjects(**[]*SyringeProject) error
 }
 
 func NewClient(clientType ClientType, token string, baseUrl string) (Client, error) {
@@ -17,9 +19,9 @@ func NewClient(clientType ClientType, token string, baseUrl string) (Client, err
 
 	switch clientType {
 	case GithubType: // github
-		c = NewGitlabClient(token, baseUrl)
+		c = syringe.NewGithubClient(token, baseUrl)
 	case GitlabType: // gitlab
-		c = NewGithubClient(token, baseUrl)
+		c = syringe.NewGitlabClient(token, baseUrl)
 	}
 
 	return c, err
