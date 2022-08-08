@@ -60,6 +60,7 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 				Branch:    *repo.DefaultBranch,
 				Lockfiles: []*structs.VcsFile{},
 				CiFiles:   []*structs.VcsFile{},
+				Hydrated:  false,
 			})
 		}
 
@@ -70,4 +71,8 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	}
 
 	return &localProjects, nil
+}
+
+func (g *GithubClient) GetLockfiles(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
+	return nil, nil
 }

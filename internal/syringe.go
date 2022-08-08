@@ -38,6 +38,7 @@ type Syringe struct {
 	PhylumToken     string
 	PhylumGroupName string
 	Projects        *[]*structs.SyringeProject
+	ProjectsMap     map[int64]*structs.SyringeProject
 	MineOnly        bool
 }
 
@@ -97,7 +98,36 @@ func (s *Syringe) ListProjects() error {
 		log.Errorf("Failed to list projects: %v\n", err)
 	}
 	s.Projects = syringeProjects
+	for _, project := range *syringeProjects {
+		s.ProjectsMap[project.Id] = project
+	}
+
 	return nil
+}
+
+// Returns a pointer to project with the lockfiles in it
+func (s *Syringe) GetLockfiles(projectId int64) (*structs.SyringeProject, error) {
+	// // TODO: godawful hack fixme please
+	// var theProject *structs.SyringeProject
+	// for _, proj := range *s.Projects {
+	// 	if proj.Id == projectId {
+	// 		theProject = proj
+	// 	}
+	// }
+	theProject := s.ProjectsMap[projectId]
+	if theProject.Hydrated == true {
+		return theProject, nil
+	}
+
+	lockfiles, err := s.Client.GetLockfiles(theProject.Id, theProject.Branch) // TODO: i think i want s.projects to be a map indexed by projectid
+	if err != nil {
+		log.Errorf("Failed to get lockfiles: %v\n", err)
+		return nil, err
+	}
+	theProject.Lockfiles = lockfiles
+	theProject.Hydrated = true
+
+	return theProject, nil
 }
 
 func (s *Syringe) PhylumGetProjectMap(retVal **map[string]structs.PhylumProject) error {

@@ -14,6 +14,7 @@ const (
 
 type Client interface {
 	ListProjects() (*[]*structs.SyringeProject, error)
+	GetLockfiles(int64, string) ([]*structs.VcsFile, error)
 }
 
 func NewClient(clientType ClientType, token string, baseUrl string, mineOnly bool) (Client, error) {
