@@ -1,4 +1,4 @@
-package syringe
+package utils
 
 import (
 	"fmt"
@@ -35,7 +35,7 @@ func GetGitlabCIFiles() []string {
 	}
 }
 
-func readEnvVar(key string) (string, error) {
+func ReadEnvVar(key string) (string, error) {
 	if value, ok := os.LookupEnv(key); ok {
 		return value, nil
 	} else {

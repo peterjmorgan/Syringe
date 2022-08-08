@@ -1,74 +1,74 @@
-package syringe
+package syringePackage
 
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
-	"github.com/gosuri/uiprogress"
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
 
-func init() {
-	// setup logging
-	log.SetReportCaller(false)
-	// log.SetFormatter(&log.TextFormatter{
-	// 	ForceColors:            false,
-	// 	FullTimestamp:          true,
-	// 	DisableLevelTruncation: false,
-	// 	DisableTimestamp:       false,
-	// })
-	logFile, err := os.OpenFile("LOG_Syringe.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-	if err != nil {
-		fmt.Println("Error: failed to open logfile")
-	}
-	// mw := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(logFile)
-	log.SetLevel(log.InfoLevel)
-	uiprogress.Start()
-}
+// func init() {
+// 	// setup logging
+// 	log.SetReportCaller(false)
+// 	// log.SetFormatter(&log.TextFormatter{
+// 	// 	ForceColors:            false,
+// 	// 	FullTimestamp:          true,
+// 	// 	DisableLevelTruncation: false,
+// 	// 	DisableTimestamp:       false,
+// 	// })
+// 	logFile, err := os.OpenFile("LOG_Syringe.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+// 	if err != nil {
+// 		fmt.Println("Error: failed to open logfile")
+// 	}
+// 	// mw := io.MultiWriter(os.Stdout, logFile)
+// 	log.SetOutput(logFile)
+// 	log.SetLevel(log.InfoLevel)
+// }
 
 type Syringe struct {
 	Client          Client
 	PhylumToken     string
 	PhylumGroupName string
-	ProjectIDs      []string
+	Projects        *[]*structs.SyringeProject
 	MineOnly        bool
 }
 
 func NewSyringe(mineOnly bool) (*Syringe, error) {
 	var vcsType ClientType
-	vcsValue, err := readEnvVar("SYRINGE_VCS")
+	vcsValue, err := utils.ReadEnvVar("SYRINGE_VCS")
 	if err != nil {
 		log.Fatalf("Failed to read syringe vcs type from ENV\n")
 	}
 
-	gitlabToken, err := readEnvVar("GITLAB_TOKEN")
+	vcsToken, err := utils.ReadEnvVar("SYRINGE_VCS_TOKEN")
 	if err != nil {
-		log.Fatalf("Failed to read gitlab token from ENV\n")
+		log.Fatalf("Failed to read SYRINGE_VCS_TOKEN from ENV\n")
 	}
-	phylumToken, err := readEnvVar("PHYLUM_API_KEY")
+
+	vcsOrg, err := utils.ReadEnvVar("SYRINGE_ORG")
+	if err != nil {
+		log.Debugf("GITLAB_BASEURL is not set\n")
+		// TODO: fix this
+		vcsOrg = "https://gitlab.com"
+	}
+
+	phylumToken, err := utils.ReadEnvVar("PHYLUM_API_KEY")
 	if err != nil {
 		log.Fatalf("Failed to read phylum api key from ENV\n")
 	}
 
-	phylumGroupName, err := readEnvVar("PHYLUM_GROUP_NAME")
+	phylumGroupName, err := utils.ReadEnvVar("PHYLUM_GROUP_NAME")
 	if err != nil {
 		log.Debugf("PHYLUM_GROUP is not set\n")
 		phylumGroupName = ""
-	}
-
-	gitlabBaseUrl, err := readEnvVar("GITLAB_BASEURL")
-	if err != nil {
-		log.Debugf("GITLAB_BASEURL is not set\n")
-		gitlabBaseUrl = "https://gitlab.com"
 	}
 
 	if vcsValue == "gitlab" {
@@ -76,7 +76,7 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 	} else if vcsValue == "github" {
 		vcsType = 0
 	}
-	client, err := NewClient(vcsType, gitlabToken, gitlabBaseUrl)
+	client, err := NewClient(vcsType, vcsToken, vcsOrg, mineOnly)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v\n", err)
 	}
@@ -85,12 +85,22 @@ func NewSyringe(mineOnly bool) (*Syringe, error) {
 		Client:          client,
 		PhylumToken:     phylumToken,
 		PhylumGroupName: phylumGroupName,
-		ProjectIDs:      []string{},
+		Projects:        nil,
 		MineOnly:        mineOnly,
 	}, nil
 }
 
-func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
+func (s *Syringe) ListProjects() error {
+
+	syringeProjects, err := s.Client.ListProjects()
+	if err != nil {
+		log.Errorf("Failed to list projects: %v\n", err)
+	}
+	s.Projects = syringeProjects
+	return nil
+}
+
+func (s *Syringe) PhylumGetProjectMap(retVal **map[string]structs.PhylumProject) error {
 	var stdErrBytes bytes.Buffer
 	var projectListArgs = []string{"project", "list", "--json"}
 	if s.PhylumGroupName != "" {
@@ -107,13 +117,13 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	stdErrString := stdErrBytes.String()
 	_ = stdErrString // prob will need this later
 
-	var PhylumProjectList []PhylumProject
+	var PhylumProjectList []structs.PhylumProject
 	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
 		log.Errorf("Failed to unmarshal JSON: %v\n", err)
 		return err
 	}
 
-	returnMap := make(map[string]PhylumProject, 0)
+	returnMap := make(map[string]structs.PhylumProject, 0)
 	for _, elem := range PhylumProjectList {
 		returnMap[elem.Name] = elem
 	}
@@ -122,14 +132,14 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	return nil
 }
 
-func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {
+func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- structs.PhylumProject) error {
 	for projectName := range projectNames {
 		tempDir, err := ioutil.TempDir("", "syringe-create")
 		if err != nil {
 			log.Errorf("Failed to create temp directory: %v\n", err)
 			return err
 		}
-		defer RemoveTempDir(tempDir)
+		defer utils.RemoveTempDir(tempDir)
 
 		var stdErrBytes bytes.Buffer
 		var CreateCmdArgs = []string{"project", "create", projectName}
@@ -156,7 +166,7 @@ func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<
 			return err
 		}
 
-		phylumProject := PhylumProject{}
+		phylumProject := structs.PhylumProject{}
 		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
 		if err != nil {
 			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", projectName, err)
@@ -167,8 +177,8 @@ func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<
 	return nil
 }
 
-func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]PhylumProject, error) {
-	createdProjects := make([]PhylumProject, 0)
+func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]structs.PhylumProject, error) {
+	createdProjects := make([]structs.PhylumProject, 0)
 
 	for _, elem := range projectsToCreate {
 		tempDir, err := ioutil.TempDir("", "syringe-create")
@@ -176,7 +186,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 			log.Errorf("Failed to create temp directory: %v\n", err)
 			return nil, err
 		}
-		defer RemoveTempDir(tempDir)
+		defer utils.RemoveTempDir(tempDir)
 
 		var stdErrBytes bytes.Buffer
 		var CreateCmdArgs = []string{"project", "create", elem}
@@ -203,7 +213,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 			return nil, err
 		}
 
-		phylumProject := PhylumProject{}
+		phylumProject := structs.PhylumProject{}
 		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
 		if err != nil {
 			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", elem, err)
@@ -214,7 +224,7 @@ func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]Phy
 	return createdProjects, nil
 }
 
-func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile, phylumProjectName string) error {
+func (s *Syringe) PhylumRunAnalyze(phylumProjectFile structs.PhylumProject, lockfile *structs.VcsFile, phylumProjectName string) error {
 	// create temp directory to write the lockfile content for analyze
 	log.Debugf("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")
@@ -222,7 +232,7 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 		log.Errorf("Failed to create temp directory: %v\n", err)
 		return err
 	}
-	defer RemoveTempDir(tempDir)
+	defer utils.RemoveTempDir(tempDir)
 
 	// create the lockfile
 	tempLockfileName := filepath.Join(tempDir, lockfile.Name)
@@ -260,27 +270,27 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 	return nil
 }
 
-// LoadPidFile Read a text file of project IDs to operate on
-// The text file should have one project ID per line
-func (s *Syringe) LoadPidFile(filename string) error {
-	var pids []string
-
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		log.Fatalf("Failed to read project ID file: %v error: %v\n", filename, err)
-		return err
-	}
-	lineRegex := regexp.MustCompile(`^[\d|\s]+$`)
-	lines := bytes.Split(data, []byte("\n"))
-	for idx, line := range lines {
-		if !lineRegex.Match(line) && len(line) > 0 {
-			log.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
-			log.Errorf("lines must match regex: %v", lineRegex.String())
-			return fmt.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
-		}
-		pids = append(pids, string(line))
-	}
-
-	s.ProjectIDs = pids
-	return nil
-}
+// // LoadPidFile Read a text file of project IDs to operate on
+// // The text file should have one project ID per line
+// func (s *Syringe) LoadPidFile(filename string) error {
+// 	var pids []string
+//
+// 	data, err := os.ReadFile(filename)
+// 	if err != nil {
+// 		log.Fatalf("Failed to read project ID file: %v error: %v\n", filename, err)
+// 		return err
+// 	}
+// 	lineRegex := regexp.MustCompile(`^[\d|\s]+$`)
+// 	lines := bytes.Split(data, []byte("\n"))
+// 	for idx, line := range lines {
+// 		if !lineRegex.Match(line) && wantLen(line) > 0 {
+// 			log.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+// 			log.Errorf("lines must match regex: %v", lineRegex.String())
+// 			return fmt.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+// 		}
+// 		pids = append(pids, string(line))
+// 	}
+//
+// 	s.ProjectIDs = pids
+// 	return nil
+// }

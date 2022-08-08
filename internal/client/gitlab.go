@@ -1,9 +1,8 @@
-package syringe
+package client
 
 import (
-	"fmt"
-
-	Syringe "github.com/peterjmorgan/Syringe/internal"
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	utils "github.com/peterjmorgan/Syringe/internal/utils"
 	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
@@ -15,80 +14,90 @@ type GitlabClient struct {
 	MineOnly bool
 }
 
-func NewGitlabClient(gitlabToken string, gitlabBaseUrl string) *GitlabClient {
-	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
+func NewGitlabClient(gitlabToken string, gitlabBaseUrl string, mineOnly bool) *GitlabClient {
+	var gitlabClient *gitlab.Client
+	var err error
+
+	if gitlabBaseUrl != "" {
+		gitlabClient, err = gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
+	} else {
+		gitlabClient, err = gitlab.NewClient(gitlabToken)
+	}
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)
 	}
 
 	return &GitlabClient{
 		Client:   gitlabClient,
-		MineOnly: false,
+		MineOnly: mineOnly,
 	}
 }
 
-func (g *GitlabClient) ListProjects(projects **[]*Syringe.SyringeProject) error {
+func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
+	var localProjects []*structs.SyringeProject
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{
 			PerPage: 10,
 			Page:    0,
 		},
-		// Owned: gitlab.Bool(s.MineOnly),
+		Owned: gitlab.Bool(g.MineOnly),
 	}
-
-	// ch := make(chan []*gitlab.Project)
-	var localProjects []*Syringe.SyringeProject
 
 	_, resp, err := g.Client.Projects.ListProjects(opt)
 	if err != nil {
 		log.Errorf("Failed to list gitlab projects: %v\n", err)
-		return err
+		return nil, err
 	}
 	count := resp.TotalPages
-	// listProjectsBar := uiprogress.AddBar(count).AppendCompleted().PrependElapsed()
-	lPbar := progressbar.New64(int64(count))
+	listProjectsPB := progressbar.New64(int64(count))
 
 	for {
-		// listProjectsBar.Incr()
-		lPbar.Add(1)
+		listProjectsPB.Add(1)
 
-		temp, resp, err := g.Client.Projects.ListProjects(opt)
-		_ = temp
+		gitlabProjects, resp, err := g.Client.Projects.ListProjects(opt)
 		if err != nil {
 			log.Errorf("Failed to list gitlab projects: %v\n", err)
-			return err
 		}
-		// TODO: convert gitlab projects slice to syringeprojects slice
-		// localProjects = append(localProjects, temp...)
+
+		// Iterate through gitlabProjects and create SyringeProjects for each
+		for _, gitlabProject := range gitlabProjects {
+			localProjects = append(localProjects, &structs.SyringeProject{
+				Id:        int64(gitlabProject.ID),
+				Name:      gitlabProject.Name,
+				Branch:    gitlabProject.DefaultBranch,
+				Lockfiles: []*structs.VcsFile{},
+				CiFiles:   []*structs.VcsFile{},
+			})
+		}
+
 		if resp.NextPage == 0 {
 			break
 		}
 		opt.Page = resp.NextPage
 		log.Debugf("ListProjects() paging to page #%v\n", opt.Page)
-
 	}
 
 	log.Debugf("Len of gitlab projects: %v\n", len(localProjects))
-	*projects = &localProjects
-	return nil
+	return &localProjects, nil
 }
 
+// No longer needed
 // return []string of branch names
-func (g *GitlabClient) ListBranches(projectId int) ([]string, error) {
-	var branchNames []string
-
-	gitlabBranches, _, err := g.Client.Branches.ListBranches(projectId, &gitlab.ListBranchesOptions{})
-	if err != nil {
-		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
-		return nil, err
-	}
-	for _, elem := range gitlabBranches {
-		branchName := elem.Name
-		branchNames = append(branchNames, branchName)
-	}
-
-	return branchNames, nil
-}
+// func (g *GitlabClient) ListBranches(projectId int) ([]string, error) {
+// 	var branchNames []string
+//
+// 	gitlabBranches, _, err := g.Client.Branches.ListBranches(projectId, &gitlab.ListBranchesOptions{})
+// 	if err != nil {
+// 		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
+// 		return nil, err
+// 	}
+// 	for _, elem := range gitlabBranches {
+// 		branchName := elem.Name
+// 		branchNames = append(branchNames, branchName)
+// 	}
+//
+// 	return branchNames, nil
+// }
 
 func (g *GitlabClient) PrintProjectVariables(projectId int) error {
 	variables, _, err := g.Client.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
@@ -115,56 +124,57 @@ func (g *GitlabClient) ListFiles(projectId int, branch string) ([]*gitlab.TreeNo
 	return files, nil
 }
 
-func (g *GitlabClient) IdentifyMainBranch(projectId int) (string, error) {
-	branches, err := g.ListBranches(projectId)
-	if err != nil {
-		return "", err
-	}
+// No longer needed! gitlab projects have a DefaultBranch property that has this info!
+// func (g *GitlabClient) IdentifyMainBranch(projectId int) (string, error) {
+// 	branches, err := g.ListBranches(projectId)
+// 	if err != nil {
+// 		return "", err
+// 	}
+//
+// 	mainBranchSlice := Syringe.GetMainBranchSlice()
+//
+// 	foundBranches := make([]string, 0)
+// 	for _, branch := range branches {
+// 		if slices.Contains(mainBranchSlice, branch) {
+// 			foundBranches = append(foundBranches, branch)
+// 		}
+// 	}
+//
+// 	var ret string
+// 	var retErr error
+//
+// 	switch len(foundBranches) {
+// 	case 0:
+// 		ret = ""
+// 		retErr = fmt.Errorf("No main branch found: %v\n", projectId)
+// 	case 1:
+// 		ret = foundBranches[0]
+// 		retErr = nil
+// 	case 2:
+// 		// If there is more than one, opt for "master"
+// 		for _, branch := range foundBranches {
+// 			if branch == "master" {
+// 				ret = branch
+// 				retErr = nil
+// 			}
+// 		}
+// 	default:
+// 		ret = ""
+// 		retErr = fmt.Errorf("IdentifyMainBranch error: shouldn't happen %v\n", projectId)
+// 	}
+// 	return ret, retErr
+// }
 
-	mainBranchSlice := Syringe.GetMainBranchSlice()
+func (g *GitlabClient) EnumerateTargetFiles(projectId int, mainBranchName string) ([]*structs.VcsFile, []*structs.VcsFile, error) {
+	var retLockFiles []*structs.VcsFile
+	var retCiFiles []*structs.VcsFile
 
-	foundBranches := make([]string, 0)
-	for _, branch := range branches {
-		if slices.Contains(mainBranchSlice, branch) {
-			foundBranches = append(foundBranches, branch)
-		}
-	}
-
-	var ret string
-	var retErr error
-
-	switch len(foundBranches) {
-	case 0:
-		ret = ""
-		retErr = fmt.Errorf("No main branch found: %v\n", projectId)
-	case 1:
-		ret = foundBranches[0]
-		retErr = nil
-	case 2:
-		// If there is more than one, opt for "master"
-		for _, branch := range foundBranches {
-			if branch == "master" {
-				ret = branch
-				retErr = nil
-			}
-		}
-	default:
-		ret = ""
-		retErr = fmt.Errorf("IdentifyMainBranch error: shouldn't happen %v\n", projectId)
-	}
-	return ret, retErr
-}
-
-func (g *GitlabClient) EnumerateTargetFiles(projectId int) ([]*Syringe.VcsFile, []*Syringe.VcsFile, error) {
-	var retLockFiles []*Syringe.VcsFile
-	var retCiFiles []*Syringe.VcsFile
-
-	mainBranchName, err := g.IdentifyMainBranch(projectId)
-	if err != nil {
-		// TODO: this needs to pass when repos don't have code
-		log.Infof("Failed to IdentifyMainBranch: %v\n", err)
-		return nil, nil, err
-	}
+	// mainBranchName, err := g.IdentifyMainBranch(projectId)
+	// if err != nil {
+	// 	// TODO: this needs to pass when repos don't have code
+	// 	log.Infof("Failed to IdentifyMainBranch: %v\n", err)
+	// 	return nil, nil, err
+	// }
 
 	projectFiles, err := g.ListFiles(projectId, mainBranchName)
 	if err != nil {
@@ -172,8 +182,8 @@ func (g *GitlabClient) EnumerateTargetFiles(projectId int) ([]*Syringe.VcsFile, 
 		return nil, nil, err
 	}
 
-	supportedLockfiles := Syringe.GetSupportedLockfiles()
-	supportedciFiles := Syringe.GetGitlabCIFiles()
+	supportedLockfiles := utils.GetSupportedLockfiles()
+	supportedciFiles := utils.GetGitlabCIFiles()
 
 	for _, file := range projectFiles {
 		if slices.Contains(supportedLockfiles, file.Name) {
@@ -182,7 +192,7 @@ func (g *GitlabClient) EnumerateTargetFiles(projectId int) ([]*Syringe.VcsFile, 
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}
 
-			rec := Syringe.VcsFile{file.Name, file.Path, file.ID, data}
+			rec := structs.VcsFile{file.Name, file.Path, file.ID, data}
 			retLockFiles = append(retLockFiles, &rec)
 		}
 		if slices.Contains(supportedciFiles, file.Name) {
@@ -190,7 +200,7 @@ func (g *GitlabClient) EnumerateTargetFiles(projectId int) ([]*Syringe.VcsFile, 
 			if err != nil {
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}
-			rec := Syringe.VcsFile{file.Name, file.Path, file.ID, data}
+			rec := structs.VcsFile{file.Name, file.Path, file.ID, data}
 			retCiFiles = append(retCiFiles, &rec)
 		}
 	}
