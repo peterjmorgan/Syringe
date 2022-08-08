@@ -4,14 +4,11 @@ import (
 	"os"
 	"sync"
 
-	Syringe "github.com/peterjmorgan/Syringe/internal"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
-
 	"github.com/jedib0t/go-pretty/v6/table"
+	Syringe2 "github.com/peterjmorgan/Syringe/internal"
+	"github.com/peterjmorgan/Syringe/internal/structs"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/xanzy/go-gitlab"
 )
 
 func init() {
@@ -31,20 +28,19 @@ var listProjectsCmd = &cobra.Command{
 			log.SetLevel(log.DebugLevel)
 		}
 
-		// client, err := Syringe.NewClient(Syringe.GitlabType, "foo", "blah")
-
-		s, err := Syringe.NewSyringe(mineOnly)
+		s, err := Syringe2.NewSyringe(mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
 		}
-		var gitlabProjects *[]*gitlab.Project
-		var phylumProjectMap *map[string]Syringe.PhylumProject
+
+		// var gitlabProjects *[]*gitlab.Project
+		var phylumProjectMap *map[string]structs.PhylumProject
 		var wg sync.WaitGroup
 
 		wg.Add(2)
 		go func() {
-			err := s.ListProjects(&gitlabProjects)
+			err := s.ListProjects()
 			if err != nil {
 				log.Fatalf("Failed to ListProjects(): %v\n", err)
 				return
@@ -62,71 +58,24 @@ var listProjectsCmd = &cobra.Command{
 		}()
 		wg.Wait()
 
-		var localProjects []Syringe.SyringeProject
-		chProject := make(chan Syringe.SyringeProject)
-		var wgLoop sync.WaitGroup
-		// bar := progressbar.New64(int64(len(*gitlabProjects) * 2))
-
-		go func() {
-			wgLoop.Wait()
-			close(chProject)
-		}()
-
-		for _, project := range *gitlabProjects {
-			wgLoop.Add(1)
-			go func(inProject gitlab.Project) {
-				defer wgLoop.Done()
-				// defer bar.Add(1)
-				mainBranch, err := s.IdentifyMainBranch(inProject.ID)
-				if err != nil {
-					log.Infof("Failed to IdentifyMainBranch(): %v\n", err)
-					return
-				}
-				// bar.Add(1)
-
-				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
-				// bar.Add(1)
-
-				var NumPhylumEnabled int
-				for _, lf := range lockfiles {
-					generatedName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
-					if slices.Contains(maps.Keys(*phylumProjectMap), generatedName) {
-						NumPhylumEnabled++
-					}
-				}
-
-				chProject <- Syringe.SyringeProject{
-					inProject.ID,
-					inProject.Name,
-					mainBranch,
-					NumPhylumEnabled,
-					false,
-					lockfiles,
-					ciFiles,
-				}
-			}(*project)
-		}
-
-		for item := range chProject {
-			localProjects = append(localProjects, item)
-		}
-
 		t := table.NewWriter()
-		rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
-		// t.SetAutoIndex(true)
-		t.SetColumnConfigs([]table.ColumnConfig{
-			{Number: 1, AutoMerge: true},
-			{Number: 2, AutoMerge: true},
-			{Number: 3, AutoMerge: true},
-			{Number: 4, AutoMerge: true},
-		})
+		// rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
+		// // t.SetAutoIndex(true)
+		// t.SetColumnConfigs([]table.ColumnConfig{
+		// 	{Number: 1, AutoMerge: true},
+		// 	{Number: 2, AutoMerge: true},
+		// 	{Number: 3, AutoMerge: true},
+		// 	{Number: 4, AutoMerge: true},
+		// })
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path"}, rowConfigAutoMerge)
-		for _, lp := range localProjects {
-			for _, lockfile := range lp.Lockfiles {
-				t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path}, rowConfigAutoMerge)
-			}
+		// t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path"}, rowConfigAutoMerge)
+		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch"})
+		for _, p := range *s.Projects {
+			// for _, lockfile := range lp.Lockfiles {
+			// 	t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path}, rowConfigAutoMerge)
+			// }
+			t.AppendRow(table.Row{p.Name, p.Id, p.Branch})
 		}
 		t.Style().Options.SeparateRows = true
 		t.Render()
