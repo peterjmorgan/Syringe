@@ -1,16 +1,19 @@
-package syringe
+package client
 
 import (
 	"context"
 
 	"github.com/google/go-github/github"
-	Syringe "github.com/peterjmorgan/Syringe/internal"
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/schollz/progressbar/v3"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
 
 type GithubClient struct {
-	Client *github.Client
-	Ctx    context.Context
+	Client  *github.Client
+	Ctx     context.Context
+	OrgName string
 }
 
 func NewGithubClient(githubToken string, githubBaseUrl string) *GithubClient {
@@ -20,10 +23,51 @@ func NewGithubClient(githubToken string, githubBaseUrl string) *GithubClient {
 	)
 
 	gh := github.NewClient(oauth2.NewClient(ctx, ts))
-	return &GithubClient{Client: gh, Ctx: ctx}
+	return &GithubClient{
+		Client:  gh,
+		Ctx:     ctx,
+		OrgName: githubBaseUrl,
+	}
 }
 
-func (g *GithubClient) ListProjects(projects **[]*Syringe.SyringeProject) error {
+func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
+	var localProjects []*structs.SyringeProject
+	opt := &github.RepositoryListByOrgOptions{
+		ListOptions: github.ListOptions{PerPage: 20},
+	}
 
-	return nil
+	_, resp, err := g.Client.Repositories.ListByOrg(g.Ctx, g.OrgName, opt)
+	if err != nil {
+		log.Errorf("Failed to get github repositories: %v\n", err)
+		return nil, err
+	}
+	count := resp.LastPage
+	listProjectsPB := progressbar.New64(int64(count))
+
+	for {
+		listProjectsPB.Add(1)
+
+		githubRepos, resp, err := g.Client.Repositories.ListByOrg(g.Ctx, g.OrgName, opt)
+		if err != nil {
+			log.Errorf("Failed to get github repositories: %v\n", err)
+			return nil, err
+		}
+
+		for _, repo := range githubRepos {
+			localProjects = append(localProjects, &structs.SyringeProject{
+				Id:        *repo.ID,
+				Name:      *repo.Name,
+				Branch:    *repo.DefaultBranch,
+				Lockfiles: []*structs.VcsFile{},
+				CiFiles:   []*structs.VcsFile{},
+			})
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+
+	return &localProjects, nil
 }
