@@ -1,10 +1,11 @@
 package structs
 
 type VcsFile struct {
-	Name    string
-	Path    string
-	Id      string
-	Content []byte
+	Name          string
+	Path          string
+	Id            string
+	Content       []byte
+	PhylumProject *PhylumProject
 }
 
 type SyringeProject struct {
@@ -13,6 +14,7 @@ type SyringeProject struct {
 	Branch    string
 	Lockfiles []*VcsFile
 	CiFiles   []*VcsFile
+	Hydrated  bool
 }
 
 type PhylumProject struct {

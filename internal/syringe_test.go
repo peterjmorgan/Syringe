@@ -257,19 +257,19 @@ func TestSyringe_ListProjects(t *testing.T) {
 // 	}
 // 	for _, tt := range tests {
 // 		t.Run(tt.name, func(t *testing.T) {
-// 			got, gotTwo, err := s.EnumerateTargetFiles(tt.args.projectId)
+// 			got, gotTwo, err := s.GetLockFiles(tt.args.projectId)
 // 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("EnumerateTargetFiles() error = %v, wantErr %v", err, tt.wantErr)
+// 				t.Errorf("GetLockFiles() error = %v, wantErr %v", err, tt.wantErr)
 // 				return
 // 			}
 // 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("EnumerateTargetFiles() got = %v, want %v", got, tt.want)
+// 				t.Errorf("GetLockFiles() got = %v, want %v", got, tt.want)
 // 			}
 // 			if reflect.TypeOf(gotTwo) != reflect.TypeOf(tt.wantTwo) {
-// 				t.Errorf("EnumerateTargetFiles() got = %v, want %v", gotTwo, tt.wantTwo)
+// 				t.Errorf("GetLockFiles() got = %v, want %v", gotTwo, tt.wantTwo)
 // 			}
 // 			if wantLen(got) != tt.wantLen {
-// 				t.Errorf("EnumerateTargetFiles() got = %v, want %v", wantLen(got), tt.want)
+// 				t.Errorf("GetLockFiles() got = %v, want %v", wantLen(got), tt.want)
 // 			}
 // 		})
 // 	}

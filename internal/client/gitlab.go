@@ -67,6 +67,7 @@ func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 				Branch:    gitlabProject.DefaultBranch,
 				Lockfiles: []*structs.VcsFile{},
 				CiFiles:   []*structs.VcsFile{},
+				Hydrated:  false,
 			})
 		}
 
@@ -81,37 +82,7 @@ func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	return &localProjects, nil
 }
 
-// No longer needed
-// return []string of branch names
-// func (g *GitlabClient) ListBranches(projectId int) ([]string, error) {
-// 	var branchNames []string
-//
-// 	gitlabBranches, _, err := g.Client.Branches.ListBranches(projectId, &gitlab.ListBranchesOptions{})
-// 	if err != nil {
-// 		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
-// 		return nil, err
-// 	}
-// 	for _, elem := range gitlabBranches {
-// 		branchName := elem.Name
-// 		branchNames = append(branchNames, branchName)
-// 	}
-//
-// 	return branchNames, nil
-// }
-
-func (g *GitlabClient) PrintProjectVariables(projectId int) error {
-	variables, _, err := g.Client.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
-	if err != nil {
-		log.Errorf("Failed to list project variables from %v: %v\n", projectId, err)
-		return err
-	}
-	for _, variable := range variables {
-		log.Infof("Variable: %v:%v\n", variable.Key, variable.Value)
-	}
-	return nil
-}
-
-func (g *GitlabClient) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, error) {
+func (g *GitlabClient) ListFiles(projectId int64, branch string) ([]*gitlab.TreeNode, error) {
 	files, _, err := g.Client.Repositories.ListTree(projectId, &gitlab.ListTreeOptions{
 		Path:      gitlab.String("/"),
 		Ref:       gitlab.String(branch),
@@ -124,66 +95,17 @@ func (g *GitlabClient) ListFiles(projectId int, branch string) ([]*gitlab.TreeNo
 	return files, nil
 }
 
-// No longer needed! gitlab projects have a DefaultBranch property that has this info!
-// func (g *GitlabClient) IdentifyMainBranch(projectId int) (string, error) {
-// 	branches, err := g.ListBranches(projectId)
-// 	if err != nil {
-// 		return "", err
-// 	}
-//
-// 	mainBranchSlice := Syringe.GetMainBranchSlice()
-//
-// 	foundBranches := make([]string, 0)
-// 	for _, branch := range branches {
-// 		if slices.Contains(mainBranchSlice, branch) {
-// 			foundBranches = append(foundBranches, branch)
-// 		}
-// 	}
-//
-// 	var ret string
-// 	var retErr error
-//
-// 	switch len(foundBranches) {
-// 	case 0:
-// 		ret = ""
-// 		retErr = fmt.Errorf("No main branch found: %v\n", projectId)
-// 	case 1:
-// 		ret = foundBranches[0]
-// 		retErr = nil
-// 	case 2:
-// 		// If there is more than one, opt for "master"
-// 		for _, branch := range foundBranches {
-// 			if branch == "master" {
-// 				ret = branch
-// 				retErr = nil
-// 			}
-// 		}
-// 	default:
-// 		ret = ""
-// 		retErr = fmt.Errorf("IdentifyMainBranch error: shouldn't happen %v\n", projectId)
-// 	}
-// 	return ret, retErr
-// }
-
-func (g *GitlabClient) EnumerateTargetFiles(projectId int, mainBranchName string) ([]*structs.VcsFile, []*structs.VcsFile, error) {
+func (g *GitlabClient) GetLockfiles(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
+	// TODO: check if mainBranchName isn't set or is "". Bail if that's the case, there are repos without code and will not have a branch
 	var retLockFiles []*structs.VcsFile
-	var retCiFiles []*structs.VcsFile
-
-	// mainBranchName, err := g.IdentifyMainBranch(projectId)
-	// if err != nil {
-	// 	// TODO: this needs to pass when repos don't have code
-	// 	log.Infof("Failed to IdentifyMainBranch: %v\n", err)
-	// 	return nil, nil, err
-	// }
 
 	projectFiles, err := g.ListFiles(projectId, mainBranchName)
 	if err != nil {
 		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranchName)
-		return nil, nil, err
+		return nil, err
 	}
 
 	supportedLockfiles := utils.GetSupportedLockfiles()
-	supportedciFiles := utils.GetGitlabCIFiles()
 
 	for _, file := range projectFiles {
 		if slices.Contains(supportedLockfiles, file.Name) {
@@ -192,32 +114,21 @@ func (g *GitlabClient) EnumerateTargetFiles(projectId int, mainBranchName string
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}
 
-			rec := structs.VcsFile{file.Name, file.Path, file.ID, data}
+			rec := structs.VcsFile{file.Name, file.Path, file.ID, data, nil}
 			retLockFiles = append(retLockFiles, &rec)
 		}
-		if slices.Contains(supportedciFiles, file.Name) {
-			data, _, err := g.Client.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{})
-			if err != nil {
-				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
-			}
-			rec := structs.VcsFile{file.Name, file.Path, file.ID, data}
-			retCiFiles = append(retCiFiles, &rec)
-		}
 	}
-	return retLockFiles, retCiFiles, nil
+	return retLockFiles, nil
 }
 
-// func (s *Syringe) GetFileTreeFromProject(projectId int) ([]*gitlab.TreeNode, error) {
-// 	mainBranch, err := s.IdentifyMainBranch(projectId)
+// func (g *GitlabClient) PrintProjectVariables(projectId int) error {
+// 	variables, _, err := g.Client.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
 // 	if err != nil {
-// 		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
-// 		return nil, err
+// 		log.Errorf("Failed to list project variables from %v: %v\n", projectId, err)
+// 		return err
 // 	}
-//
-// 	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
-// 	if err != nil {
-// 		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
-// 		return nil, err
+// 	for _, variable := range variables {
+// 		log.Infof("Variable: %v:%v\n", variable.Key, variable.Value)
 // 	}
-// 	return projectFiles, nil
+// 	return nil
 // }

@@ -55,3 +55,34 @@ func TestGitlabClient_ListProjects(t *testing.T) {
 		})
 	}
 }
+
+func TestGitlabClient_GetLockfiles(t *testing.T) {
+	tearDown := setupEnv(t, "SYRINGE_VCS_TOKEN_GITLAB")
+	defer tearDown(t)
+
+	g := NewGitlabClient(os.Getenv("SYRINGE_VCS_TOKEN_GITLAB"), "", true)
+	type args struct {
+		projectId      int64
+		mainBranchName string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []*structs.VcsFile
+		wantErr bool
+	}{
+		{"one", args{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := g.GetLockfiles(tt.args.projectId, tt.args.mainBranchName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetLockfiles() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetLockfiles() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
