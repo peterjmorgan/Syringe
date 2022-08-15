@@ -14,14 +14,14 @@ type GitlabClient struct {
 	MineOnly bool
 }
 
-func NewGitlabClient(gitlabToken string, gitlabBaseUrl string, mineOnly bool) *GitlabClient {
+func NewGitlabClient(envMap map[string]string, mineOnly bool) *GitlabClient {
 	var gitlabClient *gitlab.Client
 	var err error
 
-	if gitlabBaseUrl != "" {
-		gitlabClient, err = gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
+	if vcsUrl, ok := envMap["vcsUrl"]; ok {
+		gitlabClient, err = gitlab.NewClient(envMap["vcsToken"], gitlab.WithBaseURL(vcsUrl))
 	} else {
-		gitlabClient, err = gitlab.NewClient(gitlabToken)
+		gitlabClient, err = gitlab.NewClient(envMap["vcsToken"])
 	}
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)
@@ -83,7 +83,7 @@ func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 }
 
 func (g *GitlabClient) ListFiles(projectId int64, branch string) ([]*gitlab.TreeNode, error) {
-	files, _, err := g.Client.Repositories.ListTree(projectId, &gitlab.ListTreeOptions{
+	files, _, err := g.Client.Repositories.ListTree(int(projectId), &gitlab.ListTreeOptions{
 		Path:      gitlab.String("/"),
 		Ref:       gitlab.String(branch),
 		Recursive: gitlab.Bool(true),
@@ -95,7 +95,7 @@ func (g *GitlabClient) ListFiles(projectId int64, branch string) ([]*gitlab.Tree
 	return files, nil
 }
 
-func (g *GitlabClient) GetLockfiles(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
+func (g *GitlabClient) GetLockfilesByProject(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
 	// TODO: check if mainBranchName isn't set or is "". Bail if that's the case, there are repos without code and will not have a branch
 	var retLockFiles []*structs.VcsFile
 
@@ -109,7 +109,7 @@ func (g *GitlabClient) GetLockfiles(projectId int64, mainBranchName string) ([]*
 
 	for _, file := range projectFiles {
 		if slices.Contains(supportedLockfiles, file.Name) {
-			data, _, err := g.Client.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranchName})
+			data, _, err := g.Client.RepositoryFiles.GetRawFile(int(projectId), file.Path, &gitlab.GetRawFileOptions{&mainBranchName})
 			if err != nil {
 				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
 			}

@@ -1,7 +1,7 @@
 package client
 
 import (
-	"os"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	"reflect"
 	"testing"
 
@@ -9,10 +9,9 @@ import (
 )
 
 func TestGithubClient_ListProjects(t *testing.T) {
-	tearDown := setupEnv(t, "SYRINGE_VCS_TOKEN_GITHUB")
-	defer tearDown(t)
-
-	g := NewGithubClient(os.Getenv("SYRINGE_VCS_TOKEN_GITHUB"), os.Getenv("SYRINGE_ORG_GITHUB"))
+	setupEnv(t, "github")
+	envMap, _ := utils.ReadEnvironment()
+	g := NewGithubClient(envMap)
 
 	tests := []struct {
 		name    string
