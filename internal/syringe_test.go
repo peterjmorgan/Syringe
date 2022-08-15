@@ -1,44 +1,26 @@
 package syringePackage
 
 import (
-	"os"
+	"fmt"
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	"reflect"
 	"testing"
 
 	"github.com/joho/godotenv"
-	"github.com/peterjmorgan/Syringe/internal/structs"
 	log "github.com/sirupsen/logrus"
 )
 
-func setupEnv(t *testing.T) func(t *testing.T) {
-	err := godotenv.Load("../.env")
+func setupEnv(t *testing.T, envFilename string) {
+	filename := fmt.Sprintf("../.env_%v", envFilename)
+
+	err := godotenv.Load(filename)
 	if err != nil {
 		log.Fatalf("Failed to load .env for testing: %v\n", err)
-	}
-
-	return func(t *testing.T) {
-		err := os.Unsetenv("GITLAB_TOKEN")
-		if err != nil {
-			log.Fatalf("Failed to unset GITLAB_TOKEN: %v\n", err)
-		}
-		err = os.Unsetenv("PHYLUM_API_KEY")
-		if err != nil {
-			log.Fatalf("Failed to unset PHYLUM_TOKEN: %v\n", err)
-		}
-		err = os.Unsetenv("SYRINGE_VCS")
-		if err != nil {
-			log.Fatalf("Failed to unset SYRINGE_VCS: %v\n", err)
-		}
-		err = os.Unsetenv("PHYLUM_GROUP_NAME")
-		if err != nil {
-			log.Fatalf("Failed to unset PHYLUM_GROUP_NAME: %v\n", err)
-		}
 	}
 }
 
 func TestNewSyringe(t *testing.T) {
-	tearDown := setupEnv(t)
-	defer tearDown(t)
 
 	type args struct {
 		gitlabToken string
@@ -46,14 +28,18 @@ func TestNewSyringe(t *testing.T) {
 
 	tests := []struct {
 		name    string
+		mine    bool
 		want    *Syringe
 		wantErr bool
 	}{
-		{"one", nil, false},
+		{"gitlab", true, nil, false},
+		{"github", false, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewSyringe(true)
+			setupEnv(t, tt.name)
+			envMap, _ := utils.ReadEnvironment()
+			got, err := NewSyringe(envMap, tt.mine)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSyringe() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -66,22 +52,25 @@ func TestNewSyringe(t *testing.T) {
 }
 
 func TestSyringe_ListProjects(t *testing.T) {
-	tearDown := setupEnv(t)
-	defer tearDown(t)
 
-	s, _ := NewSyringe(true)
+	//s, _ := NewSyringe(envMap, true)
 
 	tests := []struct {
 		name    string
+		mine    bool
 		want    *[]*structs.SyringeProject
 		wantLen int
 		wantErr bool
 	}{
-		{"one", nil, 212, false},
+		{"gitlab", true, nil, 212, false},
+		{"github", false, nil, 57, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := s.ListProjects()
+			setupEnv(t, tt.name)
+			envMap, _ := utils.ReadEnvironment()
+			s, err := NewSyringe(envMap, tt.mine)
+			err = s.ListProjects()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListProjects() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -98,210 +87,95 @@ func TestSyringe_ListProjects(t *testing.T) {
 	}
 }
 
-// 31479523
-// func TestSyringe_ListFiles(t *testing.T) {
-// 	tearDown := setupEnv(t)
-// 	defer tearDown(t)
-//
-// 	s, _ := NewSyringe(true)
-//
-// 	type args struct {
-// 		projectId int
-// 	}
-// 	tests := []struct {
-// 		name    string
-// 		args    args
-// 		want    []*gitlab.TreeNode
-// 		wantLen     int
-// 		wantErr bool
-// 	}{
-// 		{"one", args{31479523}, nil, 5, false},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, err := s.ListFiles(tt.args.projectId, "main")
-// 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("ListFiles() error = %v, wantErr %v", err, tt.wantErr)
-// 				return
-// 			}
-// 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("ListFiles() got = %v, want %v", got, tt.want)
-// 			}
-// 			if wantLen(got) != tt.wantLen {
-// 				t.Errorf("ListFiles() got = %v, want %v", wantLen(got), tt.wantLen)
-// 			}
-// 		})
-// 	}
-// }
+func TestSyringe_GetLockfilesByProject(t *testing.T) {
 
-// func TestSyringe_ListBranches(t *testing.T) {
-// 	tearDown := setupEnv(t)
-// 	defer tearDown(t)
-//
-// 	s, _ := NewSyringe()
-//
-// 	type args struct {
-// 		projectId int
-// 	}
-// 	tests := []struct {
-// 		name    string
-// 		args    args
-// 		want    []*gitlab.Branch
-// 		wantLen     int
-// 		wantErr bool
-// 	}{
-// 		{"one", args{31479523}, nil, 20, false},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, err := s.ListBranches(tt.args.projectId)
-// 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("ListBranches() error = %v, wantErr %v", err, tt.wantErr)
-// 				return
-// 			}
-// 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("ListBranches() got = %v, want %v", got, tt.want)
-// 			}
-// 			if wantLen(got) != tt.wantLen {
-// 				t.Errorf("ListBranches() got = %v, want %v", wantLen(got), tt.wantLen)
-// 			}
-// 		})
-// 	}
-// }
+	//s, _ := NewSyringe(envMap, true)
+	type args struct {
+		projectId int64
+	}
 
-// func TestSyringe_IdentifyMainBranch(t *testing.T) {
-// 	tearDown := setupEnv(t)
-// 	defer tearDown(t)
-//
-// 	s, _ := NewSyringe()
-//
-// 	type args struct {
-// 		projectId int
-// 	}
-// 	tests := []struct {
-// 		name    string
-// 		args    args
-// 		want    *gitlab.Branch
-// 		wantErr bool
-// 	}{
-// 		{"one", args{31479523}, nil, false},
-// 		{"two", args{0}, nil, true},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, err := s.IdentifyMainBranch(tt.args.projectId)
-// 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("IdentifyMainBranch() error = %v, wantErr %v", err, tt.wantErr)
-// 				return
-// 			}
-// 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("IdentifyMainBranch() got = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+	tests := []struct {
+		name    string
+		args    args
+		mine    bool
+		want    *structs.SyringeProject
+		wantLen int
+		wantErr bool
+	}{
+		{"gitlab", args{38265422}, true, &structs.SyringeProject{}, 4, false},
+		//{"github", false, nil, 57, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupEnv(t, tt.name)
+			envMap, _ := utils.ReadEnvironment()
+			s, err := NewSyringe(envMap, tt.mine)
+			if err = s.ListProjects(); err != nil {
+				fmt.Printf("failed to list projects: %v\n", err)
+			}
+			got, err := s.GetLockfilesByProject(tt.args.projectId)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetLockfilesByProject() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
 
-// func TestSyringe_GetFileTreeFromProject(t *testing.T) {
-// 	tearDown := setupEnv(t)
-// 	defer tearDown(t)
-//
-// 	s, _ := NewSyringe(true)
-//
-// 	type args struct {
-// 		projectId int
-// 	}
-// 	tests := []struct {
-// 		name    string
-// 		args    args
-// 		want    []*gitlab.TreeNode
-// 		wantLen int
-// 		wantErr bool
-// 	}{
-// 		{"one", args{31479523}, nil, 5, false},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, err := s.GetFileTreeFromProject(tt.args.projectId)
-// 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("GetFileTreeFromProject() error = %v, wantErr %v", err, tt.wantErr)
-// 				return
-// 			}
-// 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("GetFileTreeFromProject() got = %v, want %v", got, tt.want)
-// 			}
-// 			if wantLen(got) != tt.wantLen {
-// 				t.Errorf("GetFileTreeFromProject() got = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+				t.Errorf("GetLockfilesByProject() got = %v, want %v", s.Projects, tt.want)
+			}
 
-// func TestSyringe_EnumerateTargetFiles(t *testing.T) {
-// 	tearDown := setupEnv(t)
-// 	defer tearDown(t)
-//
-// 	s, _ := NewSyringe(true)
-//
-// 	type args struct {
-// 		projectId int
-// 	}
-// 	tests := []struct {
-// 		name    string
-// 		args    args
-// 		want    []*GitlabFile
-// 		wantTwo []*GitlabFile
-// 		wantLen int
-// 		wantErr bool
-// 	}{
-// 		{"one", args{31479523}, nil, nil, 1, false},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, gotTwo, err := s.GetLockFiles(tt.args.projectId)
-// 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("GetLockFiles() error = %v, wantErr %v", err, tt.wantErr)
-// 				return
-// 			}
-// 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("GetLockFiles() got = %v, want %v", got, tt.want)
-// 			}
-// 			if reflect.TypeOf(gotTwo) != reflect.TypeOf(tt.wantTwo) {
-// 				t.Errorf("GetLockFiles() got = %v, want %v", gotTwo, tt.wantTwo)
-// 			}
-// 			if wantLen(got) != tt.wantLen {
-// 				t.Errorf("GetLockFiles() got = %v, want %v", wantLen(got), tt.want)
-// 			}
-// 		})
-// 	}
-// }
-//
-// func TestSyringe_PhylumGetProjectMap(t *testing.T) {
-// 	tearDown := setupEnv(t)
-// 	defer tearDown(t)
-//
-// 	s, _ := NewSyringe()
-//
-// 	tests := []struct {
-// 		name    string
-// 		want    map[string]structs.PhylumProject
-// 		wantErr bool
-// 	}{
-// 		{"one", nil, false},
-// 	}
-//
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			got, err := s.PhylumGetProjectMap()
-// 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("PhylumGetProjectMap() error = %v, wantErr %v", err, tt.wantErr)
-// 				return
-// 			}
-// 			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-// 				t.Errorf("PhylumGetProjectMap() got = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+			if len(got.Lockfiles) != tt.wantLen {
+				t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", len(got.Lockfiles), tt.want)
+			}
+		})
+	}
+}
+
+func TestSyringe_PhylumGetProjectMap(t *testing.T) {
+
+	setupEnv(t, "gitlab")
+	envMap, _ := utils.ReadEnvironment()
+	s, err := NewSyringe(envMap, true)
+	if err != nil {
+		fmt.Printf("failed to create syringe: %v\n", err)
+	}
+	err = s.ListProjects()
+	if err != nil {
+		fmt.Printf("failed to ListProjects: %v\n", err)
+	}
+	for k, _ := range s.ProjectsMap {
+		_, err = s.GetLockfilesByProject(k)
+		if err != nil {
+			fmt.Printf("failed to GetLockfilesByProject: %v\n", err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		want    *map[string]structs.PhylumProject
+		wantErr bool
+	}{
+		{"one", nil, false},
+	}
+
+	var phylumProjects *map[string]structs.PhylumProject
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := s.PhylumGetProjectMap(&phylumProjects)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PhylumGetProjectMap() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if reflect.TypeOf(phylumProjects) != reflect.TypeOf(tt.want) {
+				t.Errorf("PhylumGetProjectMap() got = %v, want %v", phylumProjects, tt.want)
+			}
+
+			err = s.IntegratePhylumProjectList(phylumProjects)
+			fmt.Println("test")
+		})
+	}
+}
+
 //
 // func TestSyringe_PhylumCreateProjectsFromList(t *testing.T) {
 // 	tearDown := setupEnv(t)
@@ -410,3 +284,40 @@ func TestSyringe_ListProjects(t *testing.T) {
 // 		})
 // 	}
 // }
+
+func TestSyringe_GetAllLockfiles(t *testing.T) {
+
+	tests := []struct {
+		name    string
+		mine    bool
+		want    *structs.SyringeProject
+		wantLen int
+		wantErr bool
+	}{
+		{"gitlab", true, &structs.SyringeProject{}, 4, false},
+		//{"github", false, nil, 57, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupEnv(t, tt.name)
+			envMap, _ := utils.ReadEnvironment()
+			s, err := NewSyringe(envMap, tt.mine)
+			if err = s.ListProjects(); err != nil {
+				fmt.Printf("failed to list projects: %v\n", err)
+			}
+			err = s.GetAllLockfiles()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetAllLockfiles() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			//if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+			//	t.Errorf("GetLockfilesByProject() got = %v, want %v", s.Projects, tt.want)
+			//}
+
+			//if len(got.Lockfiles) != tt.wantLen {
+			//	t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", len(got.Lockfiles), tt.want)
+			//}
+		})
+	}
+}

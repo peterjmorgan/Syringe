@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	"os"
 	"sync"
 
@@ -28,7 +29,11 @@ var listProjectsCmd = &cobra.Command{
 			log.SetLevel(log.DebugLevel)
 		}
 
-		s, err := Syringe2.NewSyringe(mineOnly)
+		envMap, err := utils.ReadEnvironment()
+		if err != nil {
+			log.Fatalf("Failed to read environment variables: %v\n", err)
+		}
+		s, err := Syringe2.NewSyringe(envMap, mineOnly)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
@@ -56,7 +61,30 @@ var listProjectsCmd = &cobra.Command{
 				return
 			}
 		}()
+
 		wg.Wait()
+
+		//var wgLockfile sync.WaitGroup
+		//for k, _ := range s.ProjectsMap {
+		//	wgLockfile.Add(1)
+		//	go func(id int64) {
+		//		defer wgLockfile.Done()
+		//		_, err := s.GetLockfilesByProject(id)
+		//		if err != nil {
+		//			log.Errorf("failed to GetLockfilesByProject: %v\n", err)
+		//		}
+		//
+		//	}(k)
+		//}
+		//wgLockfile.Wait()
+
+		if err = s.GetAllLockfiles(); err != nil {
+			log.Errorf("Failed to GetAllLockfiles: %v\n", err)
+		}
+
+		if err = s.IntegratePhylumProjectList(phylumProjectMap); err != nil {
+			log.Errorf("Failed to integrate Phylum project list: %v\n", err)
+		}
 
 		t := table.NewWriter()
 		// rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
@@ -70,12 +98,12 @@ var listProjectsCmd = &cobra.Command{
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
 		// t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path"}, rowConfigAutoMerge)
-		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch"})
+		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Lockfile Path"})
 		for _, p := range *s.Projects {
-			// for _, lockfile := range lp.Lockfiles {
-			// 	t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path}, rowConfigAutoMerge)
-			// }
-			t.AppendRow(table.Row{p.Name, p.Id, p.Branch})
+			for _, lockfile := range p.Lockfiles {
+				t.AppendRow(table.Row{p.Name, p.Id, p.Branch, lockfile.Path})
+			}
+			//t.AppendRow(table.Row{p.Name, p.Id, p.Branch})
 		}
 		t.Style().Options.SeparateRows = true
 		t.Render()

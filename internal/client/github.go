@@ -16,17 +16,17 @@ type GithubClient struct {
 	OrgName string
 }
 
-func NewGithubClient(githubToken string, githubBaseUrl string) *GithubClient {
+func NewGithubClient(envMap map[string]string) *GithubClient {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: githubToken},
+		&oauth2.Token{AccessToken: envMap["vcsToken"]},
 	)
 
 	gh := github.NewClient(oauth2.NewClient(ctx, ts))
 	return &GithubClient{
 		Client:  gh,
 		Ctx:     ctx,
-		OrgName: githubBaseUrl,
+		OrgName: envMap["vcsOrg"],
 	}
 }
 
@@ -73,6 +73,6 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	return &localProjects, nil
 }
 
-func (g *GithubClient) GetLockfiles(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
+func (g *GithubClient) GetLockfilesByProject(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
 	return nil, nil
 }
