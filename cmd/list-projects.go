@@ -1,9 +1,10 @@
 package cmd
 
 import (
-	"github.com/peterjmorgan/Syringe/internal/utils"
 	"os"
 	"sync"
+
+	"github.com/peterjmorgan/Syringe/internal/utils"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	Syringe2 "github.com/peterjmorgan/Syringe/internal"
@@ -21,19 +22,35 @@ var listProjectsCmd = &cobra.Command{
 	Short: "List Gitlab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		var mineOnly bool = false
-		if cmd.Flags().Lookup("mine-only").Changed {
-			mineOnly = true
-		}
+		var ratelimit int = 0
+		var proxyUrl string = ""
+		var err error
 
 		if cmd.Flags().Lookup("debug").Changed {
 			log.SetLevel(log.DebugLevel)
+		}
+
+		if cmd.Flags().Lookup("mine-only").Changed {
+			mineOnly = true
+		}
+		if cmd.Flags().Lookup("ratelimit").Changed {
+			ratelimit, err = cmd.Flags().GetInt("ratelimit")
+			if err != nil {
+				log.Errorf("Failed to read int value from ratelimit")
+			}
+		}
+		if cmd.Flags().Lookup("proxyUrl").Changed {
+			proxyUrl, err = cmd.Flags().GetString("proxyUrl")
+			if err != nil {
+				log.Errorf("Failed to read string value from proxyUrl")
+			}
 		}
 
 		envMap, err := utils.ReadEnvironment()
 		if err != nil {
 			log.Fatalf("Failed to read environment variables: %v\n", err)
 		}
-		s, err := Syringe2.NewSyringe(envMap, mineOnly)
+		s, err := Syringe2.NewSyringe(envMap, mineOnly, ratelimit, proxyUrl)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
@@ -64,8 +81,8 @@ var listProjectsCmd = &cobra.Command{
 
 		wg.Wait()
 
-		//var wgLockfile sync.WaitGroup
-		//for k, _ := range s.ProjectsMap {
+		// var wgLockfile sync.WaitGroup
+		// for k, _ := range s.ProjectsMap {
 		//	wgLockfile.Add(1)
 		//	go func(id int64) {
 		//		defer wgLockfile.Done()
@@ -75,16 +92,18 @@ var listProjectsCmd = &cobra.Command{
 		//		}
 		//
 		//	}(k)
-		//}
-		//wgLockfile.Wait()
+		// }
+		// wgLockfile.Wait()
 
 		if err = s.GetAllLockfiles(); err != nil {
 			log.Errorf("Failed to GetAllLockfiles: %v\n", err)
 		}
 
-		if err = s.IntegratePhylumProjectList(phylumProjectMap); err != nil {
-			log.Errorf("Failed to integrate Phylum project list: %v\n", err)
-		}
+		// if err = s.IntegratePhylumProjectList(phylumProjectMap); err != nil {
+		// 	log.Errorf("Failed to integrate Phylum project list: %v\n", err)
+		// }
+
+		_ = s.IntegratePhylumProjectList(phylumProjectMap)
 
 		t := table.NewWriter()
 		// rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
@@ -103,7 +122,7 @@ var listProjectsCmd = &cobra.Command{
 			for _, lockfile := range p.Lockfiles {
 				t.AppendRow(table.Row{p.Name, p.Id, p.Branch, lockfile.Path})
 			}
-			//t.AppendRow(table.Row{p.Name, p.Id, p.Branch})
+			// t.AppendRow(table.Row{p.Name, p.Id, p.Branch})
 		}
 		t.Style().Options.SeparateRows = true
 		t.Render()

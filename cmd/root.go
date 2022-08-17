@@ -40,5 +40,6 @@ func init() {
 	// when this action is called directly.
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug logging")
 	rootCmd.PersistentFlags().BoolP("mine-only", "m", false, "Mine (owned) projects only")
-	rootCmd.PersistentFlags().Int32P("threads", "t", -1, "Threads ")
+	rootCmd.PersistentFlags().Int32P("ratelimit", "r", 100, "Rate Limit (X/reqs/sec) ")
+	rootCmd.PersistentFlags().StringP("proxyUrl", "p", "", "proxy (https://url:port)")
 }
