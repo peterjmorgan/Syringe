@@ -1,14 +1,21 @@
 # Syringe
 
-A tool to automate the submission of GitLab projects to Phylum
+A tool to automate the submission of Gitlab and Github projects to Phylum
 
 # Configuration
 
 Syringe expects several environment variables to be properly configured:
-* `GITLAB_TOKEN`: A token to access the GitLab API
+* `SYRINGE_VCS`: Either `gitlab` or `github`
 * `PHYLUM_API_KEY`: A token to access the Phylum API
 * `PHYLUM_GROUP_NAME`: The name of the Phylum Group to which Syringe project submissions will be correlated. This group must exist before it can be used.
-* `GITLAB_BASEURL`: The fully-qualified domain name of the GitLab server. Defaults to `https://gitlab.com`
+
+To configure for Gitlab, ensure the following environment variables are properly configured:
+* `SYRINGE_VCS_TOKEN_GITLAB`: A token to access the Gitlab API
+* `SYRINGE_GITLAB_URL`: The fully-qualified domain name of the GitLab server. Defaults to `https://gitlab.com`
+ 
+To configure for Github, ensure the following environment variables are properly configured:
+* `SYRINGE_VCS_TOKEN_GITHUB`: A token to access the Github API
+* `SYRINGE_GITHUB_URL`: The fully-qualified domain name of the Github server. Defaults to `https://github.com`
 
 # Quickstart
 

@@ -1,12 +1,20 @@
 package client
 
 import (
+	"crypto/tls"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/peterjmorgan/Syringe/internal/structs"
 	utils "github.com/peterjmorgan/Syringe/internal/utils"
 	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/xanzy/go-gitlab"
 	"golang.org/x/exp/slices"
+	"golang.org/x/time/rate"
 )
 
 type GitlabClient struct {
@@ -14,15 +22,37 @@ type GitlabClient struct {
 	MineOnly bool
 }
 
-func NewGitlabClient(envMap map[string]string, mineOnly bool) *GitlabClient {
+func NewGitlabClient(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) *GitlabClient {
 	var gitlabClient *gitlab.Client
 	var err error
 
-	if vcsUrl, ok := envMap["vcsUrl"]; ok {
-		gitlabClient, err = gitlab.NewClient(envMap["vcsToken"], gitlab.WithBaseURL(vcsUrl))
-	} else {
-		gitlabClient, err = gitlab.NewClient(envMap["vcsToken"])
+	clientOptions := []gitlab.ClientOptionFunc{
+		gitlab.WithCustomRetry(retryablehttp.DefaultRetryPolicy),
 	}
+
+	if vcsUrl, ok := envMap["vcsUrl"]; ok {
+		gitlab.WithBaseURL(vcsUrl)
+	}
+	if proxyUrl != "" {
+		theProxyUrl, err := url.Parse(proxyUrl)
+		if err != nil {
+			log.Errorf("failed to parse burpurl: %v\n", err)
+		}
+
+		proxyHttp := &http.Client{
+			Transport: &http.Transport{
+				Proxy:           http.ProxyURL(theProxyUrl),
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+		clientOptions = append(clientOptions, gitlab.WithHTTPClient(proxyHttp))
+	}
+	if ratelimit != 0 {
+		clientOptions = append(clientOptions, gitlab.WithCustomLimiter(rate.NewLimiter(rate.Every(time.Second), ratelimit)))
+	}
+
+	gitlabClient, err = gitlab.NewClient(envMap["vcsToken"], clientOptions...)
+
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)
 	}
@@ -33,11 +63,15 @@ func NewGitlabClient(envMap map[string]string, mineOnly bool) *GitlabClient {
 	}
 }
 
+func (g *GitlabClient) CheckResponse(resp *gitlab.Response) error {
+	return nil
+}
+
 func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	var localProjects []*structs.SyringeProject
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{
-			PerPage: 10,
+			PerPage: 50,
 			Page:    0,
 		},
 		Owned: gitlab.Bool(g.MineOnly),
@@ -49,7 +83,7 @@ func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 		return nil, err
 	}
 	count := resp.TotalPages
-	listProjectsPB := progressbar.New64(int64(count))
+	listProjectsPB := progressbar.NewOptions(count, progressbar.OptionSetDescription("Getting Projects"))
 
 	for {
 		listProjectsPB.Add(1)
@@ -83,15 +117,16 @@ func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 }
 
 func (g *GitlabClient) ListFiles(projectId int64, branch string) ([]*gitlab.TreeNode, error) {
-	files, _, err := g.Client.Repositories.ListTree(int(projectId), &gitlab.ListTreeOptions{
+	files, resp, err := g.Client.Repositories.ListTree(int(projectId), &gitlab.ListTreeOptions{
 		Path:      gitlab.String("/"),
 		Ref:       gitlab.String(branch),
 		Recursive: gitlab.Bool(true),
 	})
 	if err != nil {
-		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
+		// log.Warnf("Failed to ListTree from %v: %v\n", projectId, err)
 		return nil, err
 	}
+	_ = resp // TODO: fixme
 	return files, nil
 }
 
@@ -101,17 +136,18 @@ func (g *GitlabClient) GetLockfilesByProject(projectId int64, mainBranchName str
 
 	projectFiles, err := g.ListFiles(projectId, mainBranchName)
 	if err != nil {
-		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranchName)
+		// log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranchName)
 		return nil, err
 	}
 
 	supportedLockfiles := utils.GetSupportedLockfiles()
 
 	for _, file := range projectFiles {
-		if slices.Contains(supportedLockfiles, file.Name) {
+		if slices.Contains(supportedLockfiles, file.Name) || strings.HasSuffix(file.Name, ".csproj") {
+			log.Debugf("Lockfile: %v in %v from projectID: %v\n", file.Name, file.Path, projectId)
 			data, _, err := g.Client.RepositoryFiles.GetRawFile(int(projectId), file.Path, &gitlab.GetRawFileOptions{&mainBranchName})
 			if err != nil {
-				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
+				log.Errorf("Failed to GetRawFile for %v in projectId %v: %v\n", file.Name, projectId, err)
 			}
 
 			rec := structs.VcsFile{file.Name, file.Path, file.ID, data, nil}

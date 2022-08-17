@@ -2,10 +2,11 @@ package syringePackage
 
 import (
 	"fmt"
-	"github.com/peterjmorgan/Syringe/internal/structs"
-	"github.com/peterjmorgan/Syringe/internal/utils"
 	"reflect"
 	"testing"
+
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
@@ -53,7 +54,7 @@ func TestNewSyringe(t *testing.T) {
 
 func TestSyringe_ListProjects(t *testing.T) {
 
-	//s, _ := NewSyringe(envMap, true)
+	// s, _ := NewSyringe(envMap, true)
 
 	tests := []struct {
 		name    string
@@ -89,7 +90,7 @@ func TestSyringe_ListProjects(t *testing.T) {
 
 func TestSyringe_GetLockfilesByProject(t *testing.T) {
 
-	//s, _ := NewSyringe(envMap, true)
+	// s, _ := NewSyringe(envMap, true)
 	type args struct {
 		projectId int64
 	}
@@ -103,7 +104,7 @@ func TestSyringe_GetLockfilesByProject(t *testing.T) {
 		wantErr bool
 	}{
 		{"gitlab", args{38265422}, true, &structs.SyringeProject{}, 4, false},
-		//{"github", false, nil, 57, false},
+		// {"github", false, nil, 57, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -170,7 +171,7 @@ func TestSyringe_PhylumGetProjectMap(t *testing.T) {
 				t.Errorf("PhylumGetProjectMap() got = %v, want %v", phylumProjects, tt.want)
 			}
 
-			err = s.IntegratePhylumProjectList(phylumProjects)
+			_ = s.IntegratePhylumProjectList(phylumProjects)
 			fmt.Println("test")
 		})
 	}
@@ -295,7 +296,7 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 		wantErr bool
 	}{
 		{"gitlab", true, &structs.SyringeProject{}, 4, false},
-		//{"github", false, nil, 57, false},
+		// {"github", false, nil, 57, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -311,13 +312,75 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 				return
 			}
 
-			//if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+			// if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
 			//	t.Errorf("GetLockfilesByProject() got = %v, want %v", s.Projects, tt.want)
-			//}
+			// }
 
-			//if len(got.Lockfiles) != tt.wantLen {
+			// if len(got.Lockfiles) != tt.wantLen {
 			//	t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", len(got.Lockfiles), tt.want)
-			//}
+			// }
 		})
 	}
 }
+
+// func TestSyringe_CreatePhylumProjects(t *testing.T) {
+// 	type args struct {
+// 		phylumProjectMap *map[string]structs.PhylumProject
+// 		syringeProjects  *[]*structs.SyringeProject
+// 	}
+//
+// 	ppMap := make(map[string]structs.PhylumProject, 1)
+// 	ppMap["one"] = structs.PhylumProject{
+// 		Name:      "one",
+// 		ID:        "232980293840928340",
+// 		UpdatedAt: "2022-08-12",
+// 		Ecosystem: "npm",
+// 	}
+// 	lfOne := structs.VcsFile{
+// 		Name:          "requirements.txt",
+// 		Path:          "backend/requirements.txt",
+// 		Id:            "SHAhash380823",
+// 		Content:       nil,
+// 		PhylumProject: nil,
+// 	}
+// 	syringeProject := structs.SyringeProject{
+// 		Id:        38265422,
+// 		Name:      "testing-1234-Syringe",
+// 		Branch:    "master",
+// 		Lockfiles: nil,
+// 		CiFiles:   nil,
+// 		Hydrated:  true,
+// 	}
+// 	syringeProject.Lockfiles = make([]*structs.VcsFile, 0)
+// 	syringeProject.Lockfiles = append(syringeProject.Lockfiles, &lfOne)
+// 	syringeProjects := make([]*structs.SyringeProject, 0)
+// 	syringeProjects = append(syringeProjects, &syringeProject)
+// 	oneArgs := args{
+// 		phylumProjectMap: &ppMap,
+// 		syringeProjects:  &syringeProjects,
+// 	}
+//
+// 	tests := []struct {
+// 		name    string
+// 		mine    bool
+// 		args    args
+// 		wantErr bool
+// 	}{
+// 		{"gitlab", true, oneArgs, false},
+// 	}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			setupEnv(t, tt.name)
+// 			envMap, _ := utils.ReadEnvironment()
+// 			s, err := NewSyringe(envMap, tt.mine)
+// 			*s.Projects = append(*s.Projects, &syringeProject)
+// 			s.ProjectsMap[syringeProject.Id] = &syringeProject
+// 			if err != nil {
+// 				fmt.Printf("Failed to create new syringe: %v\n", err)
+// 			}
+// 			if err := s.CreatePhylumProjects(tt.args.phylumProjectMap, tt.args.syringeProjects); (err != nil) != tt.wantErr {
+// 				t.Errorf("CreatePhylumProjects() error = %v, wantErr %v", err, tt.wantErr)
+// 			}
+// 		})
+// 	}
+// }

@@ -25,6 +25,10 @@ func GetSupportedLockfiles() []string {
 		"poetry.lock",
 		"pom.xml",
 		"Gemfile.lock",
+		"gradle.lockfile",
+		"Pipfile.lock",
+		"Pipfile",
+		"effective-pom.xml",
 	}
 }
 
@@ -72,8 +76,9 @@ func ReadEnvironment() (map[string]string, error) {
 
 		gitlabUrl, err = ReadEnvVar("SYRINGE_GITLAB_URL")
 		if err != nil {
-			log.Debugf("GITLAB_URL not configured")
+			log.Debugf("SYRINGE_GITLAB_URL not configured")
 		} else {
+			log.Debugf("SYRINGE_GITLAB_URL: %v\n", gitlabUrl)
 			envMap["vcsUrl"] = gitlabUrl
 		}
 
@@ -107,7 +112,7 @@ func ReadEnvironment() (map[string]string, error) {
 	}
 	envMap["phylumToken"] = phylumToken
 
-	phylumGroupName, err := ReadEnvVar("PHYLUM_GROUP")
+	phylumGroupName, err := ReadEnvVar("PHYLUM_GROUP_NAME")
 	if err != nil {
 		log.Debugf("PHYLUM_GROUP not configured\n")
 	} else {
@@ -124,6 +129,6 @@ func RemoveTempDir(tempDir string) {
 	}
 }
 
-func GeneratePhylumProjectName(projectName string, lockfilePath string) string {
-	return fmt.Sprintf("SYR-%v__%v", projectName, lockfilePath)
+func GeneratePhylumProjectName(projectName string, lockfilePath string, projectId int64) string {
+	return fmt.Sprintf("SYR-%v__%v__%v", projectName, projectId, lockfilePath)
 }
