@@ -2,6 +2,10 @@ package client
 
 import (
 	"context"
+	"github.com/peterjmorgan/Syringe/internal/utils"
+	"golang.org/x/exp/slices"
+	"io/ioutil"
+	"strings"
 
 	"github.com/google/go-github/github"
 	"github.com/peterjmorgan/Syringe/internal/structs"
@@ -73,6 +77,73 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	return &localProjects, nil
 }
 
-func (g *GithubClient) GetLockfilesByProject(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
+//TODO: write tests
+func (g *GithubClient) ListFiles(repoName string, branch string) (*github.Tree, error) {
+	fileContent, directoryContent, resp, err := g.Client.Repositories.GetContents(g.Ctx, g.OrgName, repoName, "/", &github.RepositoryContentGetOptions{})
+	if err != nil {
+		log.Errorf("Failed to GetContents(%v): %v\n", repoName, err)
+		log.Errorf("Resp: %v\n", resp.StatusCode)
+		return nil, err
+	}
+
+	for _, c := range directoryContent {
+		switch *c.Type {
+		case "file":
+			contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, repoName, *c.Path, &github.RepositoryContentGetOptions{})
+			if err != nil {
+				log.Errorf("Failed to DownloadContents(%v): %v\n", repoName, err)
+				return nil, err
+			}
+			defer contentHandle.Close()
+			fileData, err := ioutil.ReadAll(contentHandle)
+			if err != nil {
+				log.Errorf("Failed to ReadAll(%v): %v\n", contentHandle, err)
+				return nil, err
+			}
+			temp := structs.VcsFile{
+				Name:          *c.Name,
+				Path:          *c.Path,
+				Id:            *c.SHA,
+				Content:       fileData,
+				PhylumProject: nil,
+			}
+
+		case "dir":
+		}
+
+	}
+	//commits, resp, err := g.Client.Repositories.ListCommits(g.Ctx, g.OrgName, repoName, &github.CommitsListOptions{})
+	//if err != nil {
+	//	log.Errorf("failed to ListCommits from %v: %v\n", repoName, err)
+	//	log.Errorf("%v\n", resp.StatusCode)
+	//	return nil, err
+	//}
+	//
+	//lastCommitSHA := *commits[0].SHA
+	//
+	////files, resp, err := g.Client.Git.GetTree(g.Ctx, g.OrgName, repoName, lastCommitSHA, true)
+	//files, resp, err := g.Client(g.Ctx, g.OrgName, repoName, lastCommitSHA, true)
+	//if err != nil {
+	//	log.Errorf("Failed to GetTree from %v: %v\n", repoName, err)
+	//	return nil, err
+	//}
+	//return files, nil
+}
+
+func (g *GithubClient) GetLockfilesByProject(repoName string, mainBranchName string) ([]*structs.VcsFile, error) {
+	var retLockfiles []*structs.VcsFile
+
+	projectFiles, err := g.ListFiles(repoName, mainBranchName)
+	if err != nil {
+		log.Errorf("Failed to ListFiles for %v: %v\n", repoName, err)
+	}
+
+	supportedLockfiles := utils.GetSupportedLockfiles()
+
+	for _, file := range projectFiles {
+		if slices.Contains(supportedLockfiles, file.Name) || strings.HasSuffix(file.Name, ".csproj") {
+
+		}
+	}
 	return nil, nil
 }
