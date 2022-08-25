@@ -2,9 +2,10 @@ package client
 
 import (
 	"fmt"
-	"github.com/peterjmorgan/Syringe/internal/utils"
 	"reflect"
 	"testing"
+
+	"github.com/peterjmorgan/Syringe/internal/utils"
 
 	"github.com/joho/godotenv"
 	"github.com/peterjmorgan/Syringe/internal/structs"
@@ -23,7 +24,7 @@ func setupEnv(t *testing.T, envFilename string) {
 func TestGitlabClient_ListProjects(t *testing.T) {
 	setupEnv(t, "gitlab")
 	envMap, _ := utils.ReadEnvironment()
-	g := NewGitlabClient(envMap, true)
+	g := NewGitlabClient(envMap, true, 0, "")
 
 	tests := []struct {
 		name    string
@@ -55,7 +56,7 @@ func TestGitlabClient_GetLockfiles(t *testing.T) {
 	setupEnv(t, "gitlab")
 	envMap, _ := utils.ReadEnvironment()
 
-	g := NewGitlabClient(envMap, true)
+	g := NewGitlabClient(envMap, true, 0, "")
 	type args struct {
 		projectId      int64
 		mainBranchName string

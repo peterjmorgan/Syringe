@@ -2,15 +2,16 @@ package client
 
 import (
 	"context"
-	"github.com/peterjmorgan/Syringe/internal/utils"
-	"golang.org/x/exp/slices"
 	"io/ioutil"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/go-github/github"
 	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/exp/slices"
 	"golang.org/x/oauth2"
 )
 
@@ -77,73 +78,114 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	return &localProjects, nil
 }
 
-//TODO: write tests
+// TODO: write tests
 func (g *GithubClient) ListFiles(repoName string, branch string) (*github.Tree, error) {
-	fileContent, directoryContent, resp, err := g.Client.Repositories.GetContents(g.Ctx, g.OrgName, repoName, "/", &github.RepositoryContentGetOptions{})
+
+	// fileContent, directoryContent, resp, err := g.Client.Repositories.GetContents(g.Ctx, g.OrgName, repoName, "/", &github.RepositoryContentGetOptions{})
+	// if err != nil {
+	// 	log.Errorf("Failed to GetContents(%v): %v\n", repoName, err)
+	// 	log.Errorf("Resp: %v\n", resp.StatusCode)
+	// 	return nil, err
+	// }
+	//
+	// for _, c := range directoryContent {
+	// 	switch *c.Type {
+	// 	case "file":
+	// 		contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, repoName, *c.Path, &github.RepositoryContentGetOptions{})
+	// 		if err != nil {
+	// 			log.Errorf("Failed to DownloadContents(%v): %v\n", repoName, err)
+	// 			return nil, err
+	// 		}
+	// 		defer contentHandle.Close()
+	// 		fileData, err := ioutil.ReadAll(contentHandle)
+	// 		if err != nil {
+	// 			log.Errorf("Failed to ReadAll(%v): %v\n", contentHandle, err)
+	// 			return nil, err
+	// 		}
+	// 		temp := structs.VcsFile{
+	// 			Name:          *c.Name,
+	// 			Path:          *c.Path,
+	// 			Id:            *c.SHA,
+	// 			Content:       fileData,
+	// 			PhylumProject: nil,
+	// 		}
+	//
+	// 	case "dir":
+	// 	}
+
+	var resultsTree github.Tree
+
+	commits, resp, err := g.Client.Repositories.ListCommits(g.Ctx, g.OrgName, repoName, &github.CommitsListOptions{})
 	if err != nil {
-		log.Errorf("Failed to GetContents(%v): %v\n", repoName, err)
-		log.Errorf("Resp: %v\n", resp.StatusCode)
+		log.Errorf("failed to ListCommits from %v: %v\n", repoName, err)
+		log.Errorf("%v\n", resp.StatusCode)
 		return nil, err
 	}
 
-	for _, c := range directoryContent {
-		switch *c.Type {
-		case "file":
-			contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, repoName, *c.Path, &github.RepositoryContentGetOptions{})
-			if err != nil {
-				log.Errorf("Failed to DownloadContents(%v): %v\n", repoName, err)
-				return nil, err
-			}
-			defer contentHandle.Close()
-			fileData, err := ioutil.ReadAll(contentHandle)
-			if err != nil {
-				log.Errorf("Failed to ReadAll(%v): %v\n", contentHandle, err)
-				return nil, err
-			}
-			temp := structs.VcsFile{
-				Name:          *c.Name,
-				Path:          *c.Path,
-				Id:            *c.SHA,
-				Content:       fileData,
-				PhylumProject: nil,
-			}
+	// Get the latest commmit SHA for the repo and branch
+	lastCommitSHA := *commits[0].SHA
 
-		case "dir":
+	// Get the tree of objects based on the commit SHA
+	ghTree, resp, err := g.Client.Git.GetTree(g.Ctx, g.OrgName, repoName, lastCommitSHA, true)
+	if err != nil {
+		log.Errorf("Failed to GetTree from %v: %v\n", repoName, err)
+		return nil, err
+	}
+	resultsTree.Truncated = ghTree.Truncated
+	if *ghTree.Truncated {
+		log.Errorf("GH_ListFiles: GetTree() response is truncated!")
+		return nil, err
+	}
+
+	for _, treeEntry := range ghTree.Entries {
+		switch *treeEntry.Type {
+		case "blob": // file
+			resultsTree.Entries = append(resultsTree.Entries, treeEntry)
+		case "tree": // directory
+			// TODO: handle case where GetTree response is truncated here
+
+		default:
+			log.Warnf("GH_ListFiles: found treeEntry type: %v\n", *treeEntry.Type)
 		}
 
 	}
-	//commits, resp, err := g.Client.Repositories.ListCommits(g.Ctx, g.OrgName, repoName, &github.CommitsListOptions{})
-	//if err != nil {
-	//	log.Errorf("failed to ListCommits from %v: %v\n", repoName, err)
-	//	log.Errorf("%v\n", resp.StatusCode)
-	//	return nil, err
-	//}
-	//
-	//lastCommitSHA := *commits[0].SHA
-	//
-	////files, resp, err := g.Client.Git.GetTree(g.Ctx, g.OrgName, repoName, lastCommitSHA, true)
-	//files, resp, err := g.Client(g.Ctx, g.OrgName, repoName, lastCommitSHA, true)
-	//if err != nil {
-	//	log.Errorf("Failed to GetTree from %v: %v\n", repoName, err)
-	//	return nil, err
-	//}
-	//return files, nil
+	return &resultsTree, nil
 }
 
 func (g *GithubClient) GetLockfilesByProject(repoName string, mainBranchName string) ([]*structs.VcsFile, error) {
 	var retLockfiles []*structs.VcsFile
 
-	projectFiles, err := g.ListFiles(repoName, mainBranchName)
+	projectTree, err := g.ListFiles(repoName, mainBranchName)
 	if err != nil {
 		log.Errorf("Failed to ListFiles for %v: %v\n", repoName, err)
+		return nil, err
 	}
 
 	supportedLockfiles := utils.GetSupportedLockfiles()
 
-	for _, file := range projectFiles {
-		if slices.Contains(supportedLockfiles, file.Name) || strings.HasSuffix(file.Name, ".csproj") {
+	for _, file := range projectTree.Entries {
+		fileName := filepath.Base(*file.Path)
+		if slices.Contains(supportedLockfiles, fileName) || strings.HasSuffix(fileName, ".csproj") {
+			log.Debugf("Lockfile: %v in %v from project: %v\n", fileName, *file.Path, repoName)
+			contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, repoName, *file.Path, &github.RepositoryContentGetOptions{})
+			if err != nil {
+				log.Errorf("Failed to DownloadContents for %v in repo:%v: %v", *file.Path, repoName, err)
+				return nil, err
+			}
+			b, err := ioutil.ReadAll(contentHandle)
+			if err != nil {
+				log.Errorf("Failed to read bytes from %v: %v\n", *file.Path, err)
+				return nil, err
+			}
+			retLockfiles = append(retLockfiles, &structs.VcsFile{
+				Name:          fileName,
+				Path:          *file.Path,
+				Id:            *file.SHA,
+				Content:       b,
+				PhylumProject: nil,
+			})
 
 		}
 	}
-	return nil, nil
+	return retLockfiles, nil
 }
