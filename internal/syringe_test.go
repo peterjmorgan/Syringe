@@ -21,26 +21,31 @@ func setupEnv(t *testing.T, envFilename string) {
 	}
 }
 
+var gitlabOpts *structs.SyringeOptions = &structs.SyringeOptions{
+	MineOnly:  true,
+	RateLimit: 0,
+	ProxyUrl:  "",
+}
+
 func TestNewSyringe(t *testing.T) {
 
-	type args struct {
-		gitlabToken string
-	}
-
 	tests := []struct {
-		name    string
-		mine    bool
+		name string
+		// mine    bool
+		opts    *structs.SyringeOptions
 		want    *Syringe
 		wantErr bool
 	}{
-		{"gitlab", true, nil, false},
-		{"github", false, nil, false},
+		// {"gitlab", true, nil, false},
+		// {"github", false, nil, false},
+		{"gitlab", gitlabOpts, nil, false},
+		{"github", &structs.SyringeOptions{}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setupEnv(t, tt.name)
 			envMap, _ := utils.ReadEnvironment()
-			got, err := NewSyringe(envMap, tt.mine)
+			got, err := NewSyringe(envMap, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSyringe() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -58,19 +63,19 @@ func TestSyringe_ListProjects(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		mine    bool
+		opts    *structs.SyringeOptions
 		want    *[]*structs.SyringeProject
 		wantLen int
 		wantErr bool
 	}{
-		{"gitlab", true, nil, 212, false},
-		{"github", false, nil, 57, false},
+		{"gitlab", gitlabOpts, nil, 213, false},
+		{"github", &structs.SyringeOptions{}, nil, 58, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setupEnv(t, tt.name)
 			envMap, _ := utils.ReadEnvironment()
-			s, err := NewSyringe(envMap, tt.mine)
+			s, err := NewSyringe(envMap, tt.opts)
 			err = s.ListProjects()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListProjects() error = %v, wantErr %v", err, tt.wantErr)
@@ -82,7 +87,7 @@ func TestSyringe_ListProjects(t *testing.T) {
 			}
 
 			if len(*s.Projects) != tt.wantLen {
-				t.Errorf("ListProjects() wantLen(got) = %v, want %v", len(*s.Projects), tt.want)
+				t.Errorf("ListProjects() wantLen(got) = %v, want %v", len(*s.Projects), tt.wantLen)
 			}
 		})
 	}
@@ -98,19 +103,19 @@ func TestSyringe_GetLockfilesByProject(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		mine    bool
+		opts    *structs.SyringeOptions
 		want    *structs.SyringeProject
 		wantLen int
 		wantErr bool
 	}{
-		{"gitlab", args{38265422}, true, &structs.SyringeProject{}, 4, false},
-		// {"github", false, nil, 57, false},
+		{"gitlab", args{38265422}, gitlabOpts, &structs.SyringeProject{}, 4, false},
+		{"github", args{325083799}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 1, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setupEnv(t, tt.name)
 			envMap, _ := utils.ReadEnvironment()
-			s, err := NewSyringe(envMap, tt.mine)
+			s, err := NewSyringe(envMap, tt.opts)
 			if err = s.ListProjects(); err != nil {
 				fmt.Printf("failed to list projects: %v\n", err)
 			}
@@ -135,7 +140,7 @@ func TestSyringe_PhylumGetProjectMap(t *testing.T) {
 
 	setupEnv(t, "gitlab")
 	envMap, _ := utils.ReadEnvironment()
-	s, err := NewSyringe(envMap, true)
+	s, err := NewSyringe(envMap, gitlabOpts)
 	if err != nil {
 		fmt.Printf("failed to create syringe: %v\n", err)
 	}
@@ -290,19 +295,19 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		mine    bool
+		opts    *structs.SyringeOptions
 		want    *structs.SyringeProject
 		wantLen int
 		wantErr bool
 	}{
-		{"gitlab", true, &structs.SyringeProject{}, 4, false},
-		// {"github", false, nil, 57, false},
+		{"gitlab", gitlabOpts, &structs.SyringeProject{}, 4, false},
+		{"github", &structs.SyringeOptions{}, &structs.SyringeProject{}, 57, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setupEnv(t, tt.name)
 			envMap, _ := utils.ReadEnvironment()
-			s, err := NewSyringe(envMap, tt.mine)
+			s, err := NewSyringe(envMap, tt.opts)
 			if err = s.ListProjects(); err != nil {
 				fmt.Printf("failed to list projects: %v\n", err)
 			}

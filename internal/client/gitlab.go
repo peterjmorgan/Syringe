@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -22,9 +23,11 @@ type GitlabClient struct {
 	MineOnly bool
 }
 
-func NewGitlabClient(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) *GitlabClient {
+// func NewGitlabClient(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) *GitlabClient {
+func NewGitlabClient(envMap map[string]string, opts *structs.SyringeOptions) *GitlabClient {
 	var gitlabClient *gitlab.Client
 	var err error
+	var mineOnly bool = false
 
 	clientOptions := []gitlab.ClientOptionFunc{
 		gitlab.WithCustomRetry(retryablehttp.DefaultRetryPolicy),
@@ -33,22 +36,28 @@ func NewGitlabClient(envMap map[string]string, mineOnly bool, ratelimit int, pro
 	if vcsUrl, ok := envMap["vcsUrl"]; ok {
 		gitlab.WithBaseURL(vcsUrl)
 	}
-	if proxyUrl != "" {
-		theProxyUrl, err := url.Parse(proxyUrl)
-		if err != nil {
-			log.Errorf("failed to parse burpurl: %v\n", err)
+
+	v := reflect.ValueOf(opts)
+	if v.Kind() == reflect.Ptr && !v.IsNil() {
+		if opts.ProxyUrl != "" {
+			theProxyUrl, err := url.Parse(opts.ProxyUrl)
+			if err != nil {
+				log.Errorf("failed to parse burpurl: %v\n", err)
+			}
+
+			proxyHttp := &http.Client{
+				Transport: &http.Transport{
+					Proxy:           http.ProxyURL(theProxyUrl),
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}
+			clientOptions = append(clientOptions, gitlab.WithHTTPClient(proxyHttp))
+		}
+		if opts.RateLimit != 0 {
+			clientOptions = append(clientOptions, gitlab.WithCustomLimiter(rate.NewLimiter(rate.Every(time.Second), opts.RateLimit)))
 		}
 
-		proxyHttp := &http.Client{
-			Transport: &http.Transport{
-				Proxy:           http.ProxyURL(theProxyUrl),
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
-		clientOptions = append(clientOptions, gitlab.WithHTTPClient(proxyHttp))
-	}
-	if ratelimit != 0 {
-		clientOptions = append(clientOptions, gitlab.WithCustomLimiter(rate.NewLimiter(rate.Every(time.Second), ratelimit)))
+		mineOnly = opts.MineOnly
 	}
 
 	gitlabClient, err = gitlab.NewClient(envMap["vcsToken"], clientOptions...)

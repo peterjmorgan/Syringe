@@ -48,9 +48,11 @@ type Syringe struct {
 	RateLimit        int
 }
 
-func NewSyringe(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) (*Syringe, error) {
+// func NewSyringe(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) (*Syringe, error) {
+func NewSyringe(envMap map[string]string, opts *structs.SyringeOptions) (*Syringe, error) {
 
-	client, err := NewClient(envMap["vcs"], envMap, mineOnly, ratelimit, proxyUrl)
+	// client, err := NewClient(envMap["vcs"], envMap, mineOnly, ratelimit, proxyUrl)
+	client, err := NewClient(envMap["vcs"], envMap, opts)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v\n", err)
 	}
@@ -64,9 +66,9 @@ func NewSyringe(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl
 		PhylumGroupName: envMap["phylumGroup"],
 		Projects:        &defaultProjects,
 		ProjectsMap:     defaultProjectMap,
-		MineOnly:        mineOnly, // store in map
-		LockfileCount:   0,
-		RateLimit:       ratelimit,
+		// MineOnly:        mineOnly, // store in map
+		LockfileCount: 0,
+		// RateLimit:       ratelimit,
 	}, nil
 }
 
