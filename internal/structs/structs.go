@@ -23,3 +23,9 @@ type PhylumProject struct {
 	UpdatedAt string `json:"updated_at" yaml:"created_at"`
 	Ecosystem string `json:"ecosystem"`
 }
+
+type SyringeOptions struct {
+	MineOnly  bool
+	RateLimit int
+	ProxyUrl  string
+}

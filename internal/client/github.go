@@ -21,7 +21,7 @@ type GithubClient struct {
 	OrgName string
 }
 
-func NewGithubClient(envMap map[string]string) *GithubClient {
+func NewGithubClient(envMap map[string]string, opts *structs.SyringeOptions) *GithubClient {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: envMap["vcsToken"]},
@@ -152,12 +152,16 @@ func (g *GithubClient) ListFiles(repoName string, branch string) (*github.Tree, 
 	return &resultsTree, nil
 }
 
-func (g *GithubClient) GetLockfilesByProject(repoName string, mainBranchName string) ([]*structs.VcsFile, error) {
+// func (g *GithubClient) GetLockfilesByProject(repoName string, mainBranchName string) ([]*structs.VcsFile, error) {
+func (g *GithubClient) GetLockfilesByProject(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
 	var retLockfiles []*structs.VcsFile
 
-	projectTree, err := g.ListFiles(repoName, mainBranchName)
+	// Get Repo name via ID
+	repo, _, err := g.Client.Repositories.GetByID(g.Ctx, projectId)
+
+	projectTree, err := g.ListFiles(*repo.Name, mainBranchName)
 	if err != nil {
-		log.Errorf("Failed to ListFiles for %v: %v\n", repoName, err)
+		log.Errorf("Failed to ListFiles for %v: %v\n", *repo.Name, err)
 		return nil, err
 	}
 
@@ -166,10 +170,10 @@ func (g *GithubClient) GetLockfilesByProject(repoName string, mainBranchName str
 	for _, file := range projectTree.Entries {
 		fileName := filepath.Base(*file.Path)
 		if slices.Contains(supportedLockfiles, fileName) || strings.HasSuffix(fileName, ".csproj") {
-			log.Debugf("Lockfile: %v in %v from project: %v\n", fileName, *file.Path, repoName)
-			contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, repoName, *file.Path, &github.RepositoryContentGetOptions{})
+			log.Debugf("Lockfile: %v in %v from project: %v\n", fileName, *file.Path, *repo.Name)
+			contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, *repo.Name, *file.Path, &github.RepositoryContentGetOptions{})
 			if err != nil {
-				log.Errorf("Failed to DownloadContents for %v in repo:%v: %v", *file.Path, repoName, err)
+				log.Errorf("Failed to DownloadContents for %v in repo:%v: %v", *file.Path, *repo.Name, err)
 				return nil, err
 			}
 			b, err := ioutil.ReadAll(contentHandle)

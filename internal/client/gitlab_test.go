@@ -21,10 +21,16 @@ func setupEnv(t *testing.T, envFilename string) {
 	}
 }
 
+var testingSyringeOpts structs.SyringeOptions = structs.SyringeOptions{
+	MineOnly:  true,
+	RateLimit: 0,
+	ProxyUrl:  "",
+}
+
 func TestGitlabClient_ListProjects(t *testing.T) {
 	setupEnv(t, "gitlab")
 	envMap, _ := utils.ReadEnvironment()
-	g := NewGitlabClient(envMap, true, 0, "")
+	g := NewGitlabClient(envMap, &testingSyringeOpts)
 
 	tests := []struct {
 		name    string
@@ -32,7 +38,7 @@ func TestGitlabClient_ListProjects(t *testing.T) {
 		wantLen int
 		wantErr bool
 	}{
-		{"one", nil, 212, false},
+		{"one", nil, 213, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,7 +52,7 @@ func TestGitlabClient_ListProjects(t *testing.T) {
 			}
 
 			if len(*got) != tt.wantLen {
-				t.Errorf("GitlabClient_ListProjects() len(projects) got = %v, want %v", len(*got), tt.want)
+				t.Errorf("GitlabClient_ListProjects() len(projects) got = %v, want %v", len(*got), tt.wantLen)
 			}
 		})
 	}
@@ -56,7 +62,7 @@ func TestGitlabClient_GetLockfiles(t *testing.T) {
 	setupEnv(t, "gitlab")
 	envMap, _ := utils.ReadEnvironment()
 
-	g := NewGitlabClient(envMap, true, 0, "")
+	g := NewGitlabClient(envMap, &testingSyringeOpts)
 	type args struct {
 		projectId      int64
 		mainBranchName string
