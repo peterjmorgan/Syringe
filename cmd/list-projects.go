@@ -46,17 +46,23 @@ var listProjectsCmd = &cobra.Command{
 			}
 		}
 
+		opts := structs.SyringeOptions{
+			MineOnly:  mineOnly,
+			RateLimit: ratelimit,
+			ProxyUrl:  proxyUrl,
+		}
+
 		envMap, err := utils.ReadEnvironment()
 		if err != nil {
 			log.Fatalf("Failed to read environment variables: %v\n", err)
+			return
 		}
-		s, err := Syringe2.NewSyringe(envMap, mineOnly, ratelimit, proxyUrl)
+		s, err := Syringe2.NewSyringe(envMap, &opts)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
 		}
 
-		// var gitlabProjects *[]*gitlab.Project
 		var phylumProjectMap *map[string]structs.PhylumProject
 		var wg sync.WaitGroup
 
@@ -81,27 +87,9 @@ var listProjectsCmd = &cobra.Command{
 
 		wg.Wait()
 
-		// var wgLockfile sync.WaitGroup
-		// for k, _ := range s.ProjectsMap {
-		//	wgLockfile.Add(1)
-		//	go func(id int64) {
-		//		defer wgLockfile.Done()
-		//		_, err := s.GetLockfilesByProject(id)
-		//		if err != nil {
-		//			log.Errorf("failed to GetLockfilesByProject: %v\n", err)
-		//		}
-		//
-		//	}(k)
-		// }
-		// wgLockfile.Wait()
-
 		if err = s.GetAllLockfiles(); err != nil {
 			log.Errorf("Failed to GetAllLockfiles: %v\n", err)
 		}
-
-		// if err = s.IntegratePhylumProjectList(phylumProjectMap); err != nil {
-		// 	log.Errorf("Failed to integrate Phylum project list: %v\n", err)
-		// }
 
 		_ = s.IntegratePhylumProjectList(phylumProjectMap)
 

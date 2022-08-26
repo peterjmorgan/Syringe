@@ -26,7 +26,7 @@ var runPhylumCmd = &cobra.Command{
 	Short: "Run Phylum on GitLab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		var mineOnly bool = false
-		var ratelimit int32 = 0
+		var ratelimit int = 0
 		var proxyUrl string = ""
 		var err error
 
@@ -38,7 +38,7 @@ var runPhylumCmd = &cobra.Command{
 			mineOnly = true
 		}
 		if cmd.Flags().Lookup("ratelimit").Changed {
-			ratelimit, err = cmd.Flags().GetInt32("ratelimit")
+			ratelimit, err = cmd.Flags().GetInt("ratelimit")
 			if err != nil {
 				log.Errorf("Failed to read int value from ratelimit")
 			}
@@ -50,11 +50,18 @@ var runPhylumCmd = &cobra.Command{
 			}
 		}
 
+		opts := structs.SyringeOptions{
+			MineOnly:  mineOnly,
+			RateLimit: ratelimit,
+			ProxyUrl:  proxyUrl,
+		}
+
 		envMap, err := utils.ReadEnvironment()
 		if err != nil {
 			log.Fatalf("Failed to read environment variables: %v\n", err)
+			return
 		}
-		s, err := Syringe2.NewSyringe(envMap, mineOnly, int(ratelimit), proxyUrl)
+		s, err := Syringe2.NewSyringe(envMap, &opts)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
@@ -68,7 +75,6 @@ var runPhylumCmd = &cobra.Command{
 		// 	}
 		// }
 
-		// var localProjects *[]*structs.SyringeProject
 		var phylumProjectMap *map[string]structs.PhylumProject
 		var wg sync.WaitGroup
 

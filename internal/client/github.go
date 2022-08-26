@@ -78,7 +78,6 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	return &localProjects, nil
 }
 
-// TODO: write tests
 func (g *GithubClient) ListFiles(repoName string, branch string) (*github.Tree, error) {
 
 	// fileContent, directoryContent, resp, err := g.Client.Repositories.GetContents(g.Ctx, g.OrgName, repoName, "/", &github.RepositoryContentGetOptions{})
