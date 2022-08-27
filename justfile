@@ -41,3 +41,9 @@ docker-run-phylum-debug:
 # docker run syringe image interactive shell
 docker-run-shell:
   docker run -e PHYLUM_API_KEY -e GITLAB_TOKEN -it --entrypoint bash syringe
+
+mikexray-list-projects:
+  go build
+  cp Syringe mikexray/
+  cd mikexray; ./Syringe list-projects -d
+

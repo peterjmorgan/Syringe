@@ -1,276 +1,145 @@
-package PhylumSyringGitlab
+package syringePackage
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
+	"sync"
 
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/peterjmorgan/Syringe/internal/utils"
+	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
-	"github.com/xanzy/go-gitlab"
-	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v2"
 )
-
-// Branches to examine for "main" branch
-func getMainBranchSlice() []string {
-	return []string{
-		"master",
-		"main",
-	}
-}
-
-// Lockfiles to target
-func getSupportedLockfiles() []string {
-	return []string{
-		"package-lock.json",
-		"yarn.lock",
-		"requirements.txt",
-		"poetry.lock",
-		"pom.xml",
-		"Gemfile.lock",
-	}
-}
-
-// CI Files to target
-func getCiFiles() []string {
-	return []string{
-		".gitlab-ci.yml",
-		".gitlab-ci.yaml",
-	}
-}
-
-func readEnvVar(key string) (string, error) {
-	if value, ok := os.LookupEnv(key); ok {
-		return value, nil
-	} else {
-		return "", fmt.Errorf("Failed to read environment variable: %v\n", key)
-	}
-}
 
 func init() {
 	// setup logging
 	log.SetReportCaller(false)
-	log.SetFormatter(&log.TextFormatter{
-		ForceColors:            true,
-		FullTimestamp:          true,
-		DisableLevelTruncation: false,
-		DisableTimestamp:       false,
-	})
-	logFile, err := os.OpenFile("LOG_PhylumSyringeGitlab.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	// log.SetFormatter(&log.TextFormatter{
+	// 	ForceColors:            false,
+	// 	FullTimestamp:          true,
+	// 	DisableLevelTruncation: false,
+	// 	DisableTimestamp:       false,
+	// })
+	logFile, err := os.OpenFile("LOG_Syringe.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Println("Error: failed to open logfile")
 	}
-	mw := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(mw)
+	// mw := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(logFile)
 	log.SetLevel(log.InfoLevel)
 }
 
-func NewSyringe(mineOnly bool) (*Syringe, error) {
-	gitlabToken, err := readEnvVar("GITLAB_TOKEN")
+type Syringe struct {
+	Client           Client
+	PhylumToken      string
+	PhylumGroupName  string
+	Projects         *[]*structs.SyringeProject
+	ProjectsMap      map[int64]*structs.SyringeProject
+	ProjectsMapMutex sync.RWMutex
+	MineOnly         bool
+	LockfileCount    int
+	RateLimit        int
+}
+
+// func NewSyringe(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) (*Syringe, error) {
+func NewSyringe(envMap map[string]string, opts *structs.SyringeOptions) (*Syringe, error) {
+
+	// client, err := NewClient(envMap["vcs"], envMap, mineOnly, ratelimit, proxyUrl)
+	client, err := NewClient(envMap["vcs"], envMap, opts)
 	if err != nil {
-		log.Fatalf("Failed to read gitlab token from ENV\n")
-	}
-	phylumToken, err := readEnvVar("PHYLUM_API_KEY")
-	if err != nil {
-		log.Fatalf("Failed to read phylum api key from ENV\n")
+		log.Fatalf("Failed to create client: %v\n", err)
 	}
 
-	phylumGroupName, err := readEnvVar("PHYLUM_GROUP_NAME")
-	if err != nil {
-		log.Debugf("PHYLUM_GROUP is not set\n")
-		phylumGroupName = ""
-	}
-
-	gitlabBaseUrl, err := readEnvVar("GITLAB_BASEURL")
-	if err != nil {
-		log.Debugf("GITLAB_BASEURL is not set\n")
-		gitlabBaseUrl = "https://gitlab.com"
-	}
-
-	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabBaseUrl))
-	if err != nil {
-		log.Fatalf("Failed to create gitlab client: %v\n", err)
-		return nil, err
-	}
+	defaultProjects := make([]*structs.SyringeProject, 0)
+	defaultProjectMap := make(map[int64]*structs.SyringeProject, 0)
 
 	return &Syringe{
-		Gitlab:          gitlabClient,
-		PhylumToken:     phylumToken,
-		PhylumGroupName: phylumGroupName,
-		ProjectIDs:      []string{},
-		MineOnly:        mineOnly,
+		Client:          client,
+		PhylumToken:     envMap["phylumToken"],
+		PhylumGroupName: envMap["phylumGroup"],
+		Projects:        &defaultProjects,
+		ProjectsMap:     defaultProjectMap,
+		// MineOnly:        mineOnly, // store in map
+		LockfileCount: 0,
+		// RateLimit:       ratelimit,
 	}, nil
 }
 
-func (s *Syringe) ListProjects(projects **[]*gitlab.Project) error {
+func (s *Syringe) ListProjects() error {
 
-	opt := &gitlab.ListProjectsOptions{
-		ListOptions: gitlab.ListOptions{
-			PerPage: 100,
-			Page:    0,
-		},
-		Owned: gitlab.Bool(s.MineOnly),
+	syringeProjects, err := s.Client.ListProjects()
+	if err != nil {
+		log.Errorf("Failed to list projects: %v\n", err)
+	}
+	s.Projects = syringeProjects
+	s.ProjectsMap = make(map[int64]*structs.SyringeProject, len(*syringeProjects))
+	for _, project := range *syringeProjects {
+		s.ProjectsMap[project.Id] = project
 	}
 
-	// ch := make(chan []*gitlab.Project)
-	var localProjects []*gitlab.Project
-
-	for {
-		temp, resp, err := s.Gitlab.Projects.ListProjects(opt)
-		if err != nil {
-			log.Errorf("Failed to list gitlab projects: %v\n", err)
-			return err
-		}
-		localProjects = append(localProjects, temp...)
-
-		if resp.NextPage == 0 {
-			break
-		}
-		opt.Page = resp.NextPage
-		log.Debugf("ListProjects() paging to page #%v\n", opt.Page)
-	}
-
-	log.Debugf("Len of gitlab projects: %v\n", len(localProjects))
-	*projects = &localProjects
 	return nil
 }
 
-func (s *Syringe) ListBranches(projectId int) ([]*gitlab.Branch, error) {
-	branches, _, err := s.Gitlab.Branches.ListBranches(projectId, &gitlab.ListBranchesOptions{})
+// Returns a pointer to project with the lockfiles in it
+func (s *Syringe) GetLockfilesByProject(projectId int64) (*structs.SyringeProject, error) {
+
+	s.ProjectsMapMutex.RLock()
+	theProject, ok := s.ProjectsMap[projectId]
+	s.ProjectsMapMutex.RUnlock()
+	if ok {
+		if theProject.Hydrated == true {
+			return theProject, nil
+		}
+	} else {
+		// projectID not in map
+		log.Debugf("GetLockfilesByProject: Creating empty project")
+		theProject = &structs.SyringeProject{}
+	}
+
+	lockfiles, err := s.Client.GetLockfilesByProject(theProject.Id, theProject.Branch) // TODO: i think i want s.projects to be a map indexed by projectid
 	if err != nil {
-		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
+		// log.Warnf("Failed to get lockfiles: %v\n", err)
 		return nil, err
 	}
-	return branches, nil
+	theProject.Lockfiles = lockfiles
+	theProject.Hydrated = true
+
+	s.ProjectsMapMutex.Lock()
+	s.ProjectsMap[projectId] = theProject
+	s.ProjectsMapMutex.Unlock()
+
+	return theProject, nil
 }
 
-func (s *Syringe) PrintProjectVariables(projectId int) error {
-	variables, _, err := s.Gitlab.ProjectVariables.ListVariables(projectId, &gitlab.ListProjectVariablesOptions{})
-	if err != nil {
-		log.Errorf("Failed to list project variables from %v: %v\n", projectId, err)
-		return err
+func (s *Syringe) GetAllLockfiles() error {
+	var wg sync.WaitGroup
+	lockfilesBar := progressbar.NewOptions(len(*s.Projects), progressbar.OptionSetDescription("Getting Lockfiles"))
+
+	for kID, _ := range s.ProjectsMap {
+		wg.Add(1)
+		go func(id int64) {
+			defer wg.Done()
+			_, err := s.GetLockfilesByProject(id)
+			lockfilesBar.Add(1)
+			if err != nil {
+				log.Warnf("failed to GetLockFilesByProject() ID=%v: %v\n", kID, err)
+			}
+		}(kID)
 	}
-	for _, variable := range variables {
-		log.Infof("Variable: %v:%v\n", variable.Key, variable.Value)
-	}
+	wg.Wait()
+
 	return nil
 }
 
-func (s *Syringe) ListFiles(projectId int, branch string) ([]*gitlab.TreeNode, error) {
-	files, _, err := s.Gitlab.Repositories.ListTree(projectId, &gitlab.ListTreeOptions{
-		Path:      gitlab.String("/"),
-		Ref:       gitlab.String(branch),
-		Recursive: gitlab.Bool(true),
-	})
-	if err != nil {
-		log.Errorf("Failed to ListTree from %v: %v\n", projectId, err)
-		return nil, err
-	}
-	return files, nil
-}
-
-func (s *Syringe) IdentifyMainBranch(projectId int) (*gitlab.Branch, error) {
-	branches, err := s.ListBranches(projectId)
-	if err != nil {
-		return nil, err
-	}
-
-	mainBranchSlice := getMainBranchSlice()
-
-	foundBranches := make([]*gitlab.Branch, 0)
-	for _, branch := range branches {
-		if slices.Contains(mainBranchSlice, branch.Name) {
-			foundBranches = append(foundBranches, branch)
-		}
-	}
-
-	var ret *gitlab.Branch
-	var retErr error
-
-	switch len(foundBranches) {
-	case 0:
-		ret = nil
-		retErr = fmt.Errorf("No main branch found: %v\n", projectId)
-	case 1:
-		ret = foundBranches[0]
-		retErr = nil
-	case 2:
-		for _, branch := range foundBranches {
-			if branch.Name == "master" {
-				ret = branch
-				retErr = nil
-			}
-		}
-	default:
-		ret = nil
-		retErr = fmt.Errorf("IdentifyMainBranch error: shouldn't happen %v\n", projectId)
-	}
-	return ret, retErr
-}
-
-func (s *Syringe) GetFileTreeFromProject(projectId int) ([]*gitlab.TreeNode, error) {
-	mainBranch, err := s.IdentifyMainBranch(projectId)
-	if err != nil {
-		log.Errorf("Failed to IdentifyMainBranch: %v\n", err)
-		return nil, err
-	}
-
-	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
-	if err != nil {
-		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
-		return nil, err
-	}
-	return projectFiles, nil
-}
-
-func (s *Syringe) EnumerateTargetFiles(projectId int) ([]*GitlabFile, []*GitlabFile, error) {
-	var retLockFiles []*GitlabFile
-	var retCiFiles []*GitlabFile
-
-	mainBranch, err := s.IdentifyMainBranch(projectId)
-	if err != nil {
-		// TODO: this needs to pass when repos don't have code
-		log.Infof("Failed to IdentifyMainBranch: %v\n", err)
-		return nil, nil, err
-	}
-
-	projectFiles, err := s.ListFiles(projectId, mainBranch.Name)
-	if err != nil {
-		log.Errorf("Failed to ListFiles for %v on branch %v\n", projectId, mainBranch.Name)
-		return nil, nil, err
-	}
-
-	supportedLockfiles := getSupportedLockfiles()
-	supportedciFiles := getCiFiles()
-	for _, file := range projectFiles {
-		if slices.Contains(supportedLockfiles, file.Name) {
-			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{&mainBranch.Name})
-			if err != nil {
-				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
-			}
-			rec := GitlabFile{file.Name, file.Path, file.ID, data}
-			retLockFiles = append(retLockFiles, &rec)
-		}
-		if slices.Contains(supportedciFiles, file.Name) {
-			data, _, err := s.Gitlab.RepositoryFiles.GetRawFile(projectId, file.Path, &gitlab.GetRawFileOptions{})
-			if err != nil {
-				log.Errorf("Failed to GetRawFile for %v in projectId %v\n", file.Name, projectId)
-			}
-			rec := GitlabFile{file.Name, file.Path, file.ID, data}
-			retCiFiles = append(retCiFiles, &rec)
-		}
-	}
-	return retLockFiles, retCiFiles, nil
-}
-
-func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
+// This returns a map because usually when I run this, it's concurrent with listProjects. Then, I can integrate them into the syringe struct.
+func (s *Syringe) PhylumGetProjectMap(retVal **map[string]structs.PhylumProject) error {
 	var stdErrBytes bytes.Buffer
 	var projectListArgs = []string{"project", "list", "--json"}
 	if s.PhylumGroupName != "" {
@@ -287,13 +156,13 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	stdErrString := stdErrBytes.String()
 	_ = stdErrString // prob will need this later
 
-	var PhylumProjectList []PhylumProject
+	var PhylumProjectList []structs.PhylumProject
 	if err := json.Unmarshal(output, &PhylumProjectList); err != nil {
 		log.Errorf("Failed to unmarshal JSON: %v\n", err)
 		return err
 	}
 
-	returnMap := make(map[string]PhylumProject, 0)
+	returnMap := make(map[string]structs.PhylumProject, len(PhylumProjectList))
 	for _, elem := range PhylumProjectList {
 		returnMap[elem.Name] = elem
 	}
@@ -302,110 +171,179 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]PhylumProject) error {
 	return nil
 }
 
-func (s *Syringe) GeneratePhylumProjectName(projectName string, lockfilePath string) string {
-	return fmt.Sprintf("SYR-%v__%v", projectName, lockfilePath)
+// IntegratePhylumProjectList
+// Iterate through all VCS projects matching each project with a Phylum project if it exists.
+// If it doesn't, return the slice of phylum project names to be created.
+func (s *Syringe) IntegratePhylumProjectList(phylumProjectMap *map[string]structs.PhylumProject) []string {
+	var phylumProjectsToCreate = make([]string, 0)
+	var lockfileCount int = 0
+
+	for _, syringeProject := range s.ProjectsMap {
+		for _, lockfile := range syringeProject.Lockfiles {
+			lockfileCount++
+			phylumProjectName := utils.GeneratePhylumProjectName(syringeProject.Name, lockfile.Path, syringeProject.Id)
+			phylumProject, ok := (*phylumProjectMap)[phylumProjectName]
+			if ok {
+				lockfile.PhylumProject = &phylumProject
+			} else {
+				phylumProjectsToCreate = append(phylumProjectsToCreate, phylumProjectName)
+			}
+		}
+	}
+	s.LockfileCount = lockfileCount
+	return phylumProjectsToCreate
 }
 
-func RemoveTempDir(tempDir string) {
-	err := os.RemoveAll(tempDir)
+// Identify vcsProjects that do not have an associated phylum project. Create those projects. Update the syringe struct with new phylum project information
+// func (s *Syringe) CreatePhylumProjects(phylumProjectMap *map[string]structs.PhylumProject, syringeProjects *[]*structs.SyringeProject) error {
+// 	// Enumerate list of SyringeProjects that do not have an associated Phylum project.
+// 	chCreateProjects := make(chan string, 3000)
+// 	chProjectResults := make(chan structs.PhylumProject, 3000)
+// 	var wgLoop sync.WaitGroup
+//
+// 	go func() {
+// 		wgLoop.Wait()
+// 		close(chCreateProjects)
+// 	}()
+// 	for _, project := range *syringeProjects {
+// 		wgLoop.Add(1)
+// 		go func(inProject structs.SyringeProject) {
+// 			defer wgLoop.Done()
+//
+// 			// lockfiles, _, err := s.EnumerateTargetFiles(inProject.ID)
+// 			// if err != nil {
+// 			// 	log.Debugf("Failed to GetLockFiles(): %v\n", err)
+// 			// 	return
+// 			// }
+//
+// 			log.Debugf("calling GetLockfilesByProject: %v\n", inProject.Name)
+// 			resultProject, err := s.GetLockfilesByProject(inProject.Id)
+// 			if err != nil {
+// 				log.Debugf("Failed to GetLockFiles(): %v\n", err)
+// 				return
+// 			}
+//
+// 			for _, lf := range resultProject.Lockfiles {
+// 				phylumProjectName := utils.GeneratePhylumProjectName(inProject.Name, lf.Path)
+// 				// if the project name is NOT in the slice of keys from the phylum project list map, we have to create it
+// 				// if !slices.Contains(maps.Keys(*phylumProjectMap), phylumProjectName) {
+// 				if !slices.Contains(maps.Keys(*phylumProjectMap), phylumProjectName) {
+// 					log.Debugf("sending %v to chCreateProjects\n", phylumProjectName)
+// 					chCreateProjects <- phylumProjectName
+// 					go func() {
+// 						err = s.PhylumCreateProject(chCreateProjects, chProjectResults)
+// 						if err != nil {
+// 							log.Errorf("PhylumCreateProject failed: %v\n", err)
+// 							return
+// 						}
+// 					}()
+// 				} else {
+// 					log.Debugf("Found Phylum project for %v : %v\n", inProject.Name, phylumProjectName)
+// 				}
+// 			}
+// 		}(*project)
+// 	}
+//
+// 	// recv from channel to block until create loop is complete
+// 	go func() {
+// 		for item := range chProjectResults {
+// 			log.Debugf("recv'd projectResult: %v\n", item.Name)
+// 			(*phylumProjectMap)[item.Name] = item
+// 		}
+// 		close(chProjectResults)
+// 	}()
+// 	return nil
+// }
+
+func (s *Syringe) PhylumCreateProject(projectName string, projects chan<- *structs.PhylumProject) error {
+	tempDir, err := ioutil.TempDir("", "syringe-create")
 	if err != nil {
-		log.Errorf("Failed to remove temp directory %v:%v\n", tempDir, err)
+		log.Errorf("Failed to create temp directory: %v\n", err)
+		return err
 	}
-}
+	defer utils.RemoveTempDir(tempDir)
 
-func (s *Syringe) PhylumCreateProject(projectNames <-chan string, projects chan<- PhylumProject) error {
-	for projectName := range projectNames {
-		tempDir, err := ioutil.TempDir("", "syringe-create")
-		if err != nil {
-			log.Errorf("Failed to create temp directory: %v\n", err)
-			return err
-		}
-		defer RemoveTempDir(tempDir)
-
-		var stdErrBytes bytes.Buffer
-		var CreateCmdArgs = []string{"project", "create", projectName}
-		if s.PhylumGroupName != "" {
-			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
-		}
-		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
-		projectCreateCmd.Stderr = &stdErrBytes
-		projectCreateCmd.Dir = tempDir
-		err = projectCreateCmd.Run()
-		stdErrString := stdErrBytes.String()
-		if err != nil {
-			log.Errorf("Failed to exec 'phylum project create %v': %v\n", projectName, err)
-			log.Errorf("%v\n", stdErrString)
-			return err
-		} else {
-			log.Debugf("Created phylum project: %v\n", projectName)
-		}
-
-		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
-		phylumProjectData, err := os.ReadFile(phylumProjectFile)
-		if err != nil {
-			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
-			return err
-		}
-
-		phylumProject := PhylumProject{}
-		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
-		if err != nil {
-			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", projectName, err)
-			return err
-		}
-		projects <- phylumProject
+	var stdErrBytes bytes.Buffer
+	var CreateCmdArgs = []string{"project", "create", projectName}
+	if s.PhylumGroupName != "" {
+		CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
 	}
+	projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
+	projectCreateCmd.Stderr = &stdErrBytes
+	projectCreateCmd.Dir = tempDir
+	err = projectCreateCmd.Run()
+	stdErrString := stdErrBytes.String()
+	if err != nil {
+		log.Errorf("Failed to exec 'phylum project create %v': %v\n", projectName, err)
+		log.Errorf("%v\n", stdErrString)
+		return err
+	} else {
+		log.Debugf("Created phylum project: %v\n", projectName)
+	}
+
+	phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+	phylumProjectData, err := os.ReadFile(phylumProjectFile)
+	if err != nil {
+		log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
+		return err
+	}
+
+	phylumProject := structs.PhylumProject{}
+	err = yaml.Unmarshal(phylumProjectData, &phylumProject)
+	if err != nil {
+		log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", projectName, err)
+		return err
+	}
+	projects <- &phylumProject
 	return nil
 }
 
-func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]PhylumProject, error) {
-	createdProjects := make([]PhylumProject, 0)
+// func (s *Syringe) OldPhylumCreateProject(projectNames <-chan string, projects chan<- structs.PhylumProject) error {
+// 	for projectName := range projectNames {
+// 		tempDir, err := ioutil.TempDir("", "syringe-create")
+// 		if err != nil {
+// 			log.Errorf("Failed to create temp directory: %v\n", err)
+// 			return err
+// 		}
+// 		defer utils.RemoveTempDir(tempDir)
+//
+// 		var stdErrBytes bytes.Buffer
+// 		var CreateCmdArgs = []string{"project", "create", projectName}
+// 		if s.PhylumGroupName != "" {
+// 			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
+// 		}
+// 		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
+// 		projectCreateCmd.Stderr = &stdErrBytes
+// 		projectCreateCmd.Dir = tempDir
+// 		err = projectCreateCmd.Run()
+// 		stdErrString := stdErrBytes.String()
+// 		if err != nil {
+// 			log.Errorf("Failed to exec 'phylum project create %v': %v\n", projectName, err)
+// 			log.Errorf("%v\n", stdErrString)
+// 			return err
+// 		} else {
+// 			log.Debugf("Created phylum project: %v\n", projectName)
+// 		}
+//
+// 		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+// 		phylumProjectData, err := os.ReadFile(phylumProjectFile)
+// 		if err != nil {
+// 			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
+// 			return err
+// 		}
+//
+// 		phylumProject := structs.PhylumProject{}
+// 		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
+// 		if err != nil {
+// 			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", projectName, err)
+// 			return err
+// 		}
+// 		projects <- phylumProject
+// 	}
+// 	return nil
+// }
 
-	for _, elem := range projectsToCreate {
-		tempDir, err := ioutil.TempDir("", "syringe-create")
-		if err != nil {
-			log.Errorf("Failed to create temp directory: %v\n", err)
-			return nil, err
-		}
-		defer RemoveTempDir(tempDir)
-
-		var stdErrBytes bytes.Buffer
-		var CreateCmdArgs = []string{"project", "create", elem}
-		if s.PhylumGroupName != "" {
-			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
-		}
-		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
-		projectCreateCmd.Stderr = &stdErrBytes
-		projectCreateCmd.Dir = tempDir
-		err = projectCreateCmd.Run()
-		stdErrString := stdErrBytes.String()
-		if err != nil {
-			log.Errorf("Failed to exec 'phylum project create %v': %v\n", elem, err)
-			log.Errorf("%v\n", stdErrString)
-			return nil, err
-		} else {
-			log.Infof("Created phylum project: %v\n", elem)
-		}
-
-		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
-		phylumProjectData, err := os.ReadFile(phylumProjectFile)
-		if err != nil {
-			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
-			return nil, err
-		}
-
-		phylumProject := PhylumProject{}
-		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
-		if err != nil {
-			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", elem, err)
-			return nil, err
-		}
-		createdProjects = append(createdProjects, phylumProject)
-	}
-	return createdProjects, nil
-}
-
-func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *GitlabFile, phylumProjectName string) error {
+func (s *Syringe) PhylumRunAnalyze(phylumProjectFile structs.PhylumProject, lockfile *structs.VcsFile, phylumProjectName string) error {
 	// create temp directory to write the lockfile content for analyze
 	log.Debugf("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")
@@ -413,7 +351,7 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 		log.Errorf("Failed to create temp directory: %v\n", err)
 		return err
 	}
-	defer RemoveTempDir(tempDir)
+	defer utils.RemoveTempDir(tempDir)
 
 	// create the lockfile
 	tempLockfileName := filepath.Join(tempDir, lockfile.Name)
@@ -451,27 +389,74 @@ func (s *Syringe) PhylumRunAnalyze(phylumProjectFile PhylumProject, lockfile *Gi
 	return nil
 }
 
-// LoadPidFile Read a text file of project IDs to operate on
-// The text file should have one project ID per line
-func (s *Syringe) LoadPidFile(filename string) error {
-	var pids []string
+// // LoadPidFile Read a text file of project IDs to operate on
+// // The text file should have one project ID per line
+// func (s *Syringe) LoadPidFile(filename string) error {
+// 	var pids []string
+//
+// 	data, err := os.ReadFile(filename)
+// 	if err != nil {
+// 		log.Fatalf("Failed to read project ID file: %v error: %v\n", filename, err)
+// 		return err
+// 	}
+// 	lineRegex := regexp.MustCompile(`^[\d|\s]+$`)
+// 	lines := bytes.Split(data, []byte("\n"))
+// 	for idx, line := range lines {
+// 		if !lineRegex.Match(line) && wantLen(line) > 0 {
+// 			log.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+// 			log.Errorf("lines must match regex: %v", lineRegex.String())
+// 			return fmt.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
+// 		}
+// 		pids = append(pids, string(line))
+// 	}
+//
+// 	s.ProjectIDs = pids
+// 	return nil
+// }
 
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		log.Fatalf("Failed to read project ID file: %v error: %v\n", filename, err)
-		return err
-	}
-	lineRegex := regexp.MustCompile(`^[\d|\s]+$`)
-	lines := bytes.Split(data, []byte("\n"))
-	for idx, line := range lines {
-		if !lineRegex.Match(line) && len(line) > 0 {
-			log.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
-			log.Errorf("lines must match regex: %v", lineRegex.String())
-			return fmt.Errorf("Failed to parse project ID file: %v - line #%v\n", filename, idx+1)
-		}
-		pids = append(pids, string(line))
-	}
-
-	s.ProjectIDs = pids
-	return nil
-}
+// func (s *Syringe) PhylumCreateProjectsFromList(projectsToCreate []string) ([]structs.PhylumProject, error) {
+//	createdProjects := make([]structs.PhylumProject, 0)
+//
+//	for _, elem := range projectsToCreate {
+//		tempDir, err := ioutil.TempDir("", "syringe-create")
+//		if err != nil {
+//			log.Errorf("Failed to create temp directory: %v\n", err)
+//			return nil, err
+//		}
+//		defer utils.RemoveTempDir(tempDir)
+//
+//		var stdErrBytes bytes.Buffer
+//		var CreateCmdArgs = []string{"project", "create", elem}
+//		if s.PhylumGroupName != "" {
+//			CreateCmdArgs = append(CreateCmdArgs, "-g", s.PhylumGroupName)
+//		}
+//		projectCreateCmd := exec.Command("phylum", CreateCmdArgs...)
+//		projectCreateCmd.Stderr = &stdErrBytes
+//		projectCreateCmd.Dir = tempDir
+//		err = projectCreateCmd.Run()
+//		stdErrString := stdErrBytes.String()
+//		if err != nil {
+//			log.Errorf("Failed to exec 'phylum project create %v': %v\n", elem, err)
+//			log.Errorf("%v\n", stdErrString)
+//			return nil, err
+//		} else {
+//			log.Infof("Created phylum project: %v\n", elem)
+//		}
+//
+//		phylumProjectFile := filepath.Join(tempDir, ".phylum_project")
+//		phylumProjectData, err := os.ReadFile(phylumProjectFile)
+//		if err != nil {
+//			log.Errorf("Failed to read created .phylum_project file at %v: %v\n", phylumProjectFile, err)
+//			return nil, err
+//		}
+//
+//		phylumProject := structs.PhylumProject{}
+//		err = yaml.Unmarshal(phylumProjectData, &phylumProject)
+//		if err != nil {
+//			log.Errorf("Failed to unmarshall YAML data from created phylum project %v: %v\n", elem, err)
+//			return nil, err
+//		}
+//		createdProjects = append(createdProjects, phylumProject)
+//	}
+//	return createdProjects, nil
+// }

@@ -4,15 +4,13 @@ import (
 	"os"
 	"sync"
 
-	"github.com/schollz/progressbar/v3"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	Syringe "github.com/peterjmorgan/Syringe/internal"
+	Syringe2 "github.com/peterjmorgan/Syringe/internal"
+	"github.com/peterjmorgan/Syringe/internal/structs"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/xanzy/go-gitlab"
 )
 
 func init() {
@@ -24,26 +22,53 @@ var listProjectsCmd = &cobra.Command{
 	Short: "List Gitlab Projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		var mineOnly bool = false
-		if cmd.Flags().Lookup("mine-only").Changed {
-			mineOnly = true
-		}
+		var ratelimit int = 0
+		var proxyUrl string = ""
+		var err error
 
 		if cmd.Flags().Lookup("debug").Changed {
 			log.SetLevel(log.DebugLevel)
 		}
 
-		s, err := Syringe.NewSyringe(mineOnly)
+		if cmd.Flags().Lookup("mine-only").Changed {
+			mineOnly = true
+		}
+		if cmd.Flags().Lookup("ratelimit").Changed {
+			ratelimit, err = cmd.Flags().GetInt("ratelimit")
+			if err != nil {
+				log.Errorf("Failed to read int value from ratelimit")
+			}
+		}
+		if cmd.Flags().Lookup("proxyUrl").Changed {
+			proxyUrl, err = cmd.Flags().GetString("proxyUrl")
+			if err != nil {
+				log.Errorf("Failed to read string value from proxyUrl")
+			}
+		}
+
+		opts := structs.SyringeOptions{
+			MineOnly:  mineOnly,
+			RateLimit: ratelimit,
+			ProxyUrl:  proxyUrl,
+		}
+
+		envMap, err := utils.ReadEnvironment()
+		if err != nil {
+			log.Fatalf("Failed to read environment variables: %v\n", err)
+			return
+		}
+		s, err := Syringe2.NewSyringe(envMap, &opts)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
 		}
-		var gitlabProjects *[]*gitlab.Project
-		var phylumProjectMap *map[string]Syringe.PhylumProject
+
+		var phylumProjectMap *map[string]structs.PhylumProject
 		var wg sync.WaitGroup
 
 		wg.Add(2)
 		go func() {
-			err := s.ListProjects(&gitlabProjects)
+			err := s.ListProjects()
 			if err != nil {
 				log.Fatalf("Failed to ListProjects(): %v\n", err)
 				return
@@ -59,73 +84,33 @@ var listProjectsCmd = &cobra.Command{
 				return
 			}
 		}()
+
 		wg.Wait()
 
-		var localProjects []Syringe.GitlabProject
-		chProject := make(chan Syringe.GitlabProject)
-		var wgLoop sync.WaitGroup
-		bar := progressbar.New64(int64(len(*gitlabProjects) * 2))
-
-		go func() {
-			wgLoop.Wait()
-			close(chProject)
-		}()
-
-		for _, project := range *gitlabProjects {
-			wgLoop.Add(1)
-			go func(inProject gitlab.Project) {
-				defer wgLoop.Done()
-				// defer bar.Add(1)
-				mainBranch, err := s.IdentifyMainBranch(inProject.ID)
-				if err != nil {
-					log.Infof("Failed to IdentifyMainBranch(): %v\n", err)
-					return
-				}
-				bar.Add(1)
-
-				lockfiles, ciFiles, err := s.EnumerateTargetFiles(inProject.ID)
-				bar.Add(1)
-
-				var NumPhylumEnabled int
-				for _, lf := range lockfiles {
-					generatedName := s.GeneratePhylumProjectName(inProject.Name, lf.Path)
-					if slices.Contains(maps.Keys(*phylumProjectMap), generatedName) {
-						NumPhylumEnabled++
-					}
-				}
-
-				chProject <- Syringe.GitlabProject{
-					inProject.ID,
-					inProject.Name,
-					mainBranch,
-					NumPhylumEnabled,
-					false,
-					lockfiles,
-					ciFiles,
-				}
-			}(*project)
+		if err = s.GetAllLockfiles(); err != nil {
+			log.Errorf("Failed to GetAllLockfiles: %v\n", err)
 		}
 
-		for item := range chProject {
-			localProjects = append(localProjects, item)
-		}
+		_ = s.IntegratePhylumProjectList(phylumProjectMap)
 
 		t := table.NewWriter()
-		rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
-		// t.SetAutoIndex(true)
-		t.SetColumnConfigs([]table.ColumnConfig{
-			{Number: 1, AutoMerge: true},
-			{Number: 2, AutoMerge: true},
-			{Number: 3, AutoMerge: true},
-			{Number: 4, AutoMerge: true},
-		})
+		// rowConfigAutoMerge := table.RowConfig{AutoMerge: true}
+		// // t.SetAutoIndex(true)
+		// t.SetColumnConfigs([]table.ColumnConfig{
+		// 	{Number: 1, AutoMerge: true},
+		// 	{Number: 2, AutoMerge: true},
+		// 	{Number: 3, AutoMerge: true},
+		// 	{Number: 4, AutoMerge: true},
+		// })
 		t.SetStyle(table.StyleLight)
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path"}, rowConfigAutoMerge)
-		for _, lp := range localProjects {
-			for _, lockfile := range lp.Lockfiles {
-				t.AppendRow(table.Row{lp.Name, lp.Id, lp.Branch.Name, lp.Branch.Protected, lockfile.Path}, rowConfigAutoMerge)
+		// t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Protected", "Lockfile Path"}, rowConfigAutoMerge)
+		t.AppendHeader(table.Row{"Project Name", "ID", "Main Branch", "Lockfile Path"})
+		for _, p := range *s.Projects {
+			for _, lockfile := range p.Lockfiles {
+				t.AppendRow(table.Row{p.Name, p.Id, p.Branch, lockfile.Path})
 			}
+			// t.AppendRow(table.Row{p.Name, p.Id, p.Branch})
 		}
 		t.Style().Options.SeparateRows = true
 		t.Render()
