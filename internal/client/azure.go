@@ -106,3 +106,78 @@ func (a *AzureClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	}
 	return &retProjects, nil
 }
+
+func (a *AzureClient) ListFiles(repoID string, branch string) ([]*git.GitItem, error) {
+	// var retTree *git.GitTreeRef
+	var retItems []*git.GitItem
+
+	var recurse git.VersionControlRecursionType = "full"
+	var versionType git.GitVersionType = git.GitVersionType("branch")
+
+	items, err := a.Clients.GitClient.GetItems(a.Ctx, git.GetItemsArgs{
+		RepositoryId: &repoID,
+		// Path:                   nil,
+		// Project:                nil,
+		// ScopePath:              nil,
+		RecursionLevel:         &recurse,
+		IncludeContentMetadata: &[]bool{true}[0],
+		// LatestProcessedChange:  nil,
+		// Download:               nil,
+		VersionDescriptor: &git.GitVersionDescriptor{
+			Version:        &branch,
+			VersionOptions: nil,
+			VersionType:    &versionType,
+			// VersionType:    &[]git.GitVersionType{git.GitVersionType(branch)}[0],
+		},
+		// IncludeContent:         nil,
+		// ResolveLfs:             nil,
+	})
+	if err != nil {
+		errStr := fmt.Sprintf("failed to GetItems for %v: %v\n", repoID, err)
+		log.Error(errStr)
+		return nil, fmt.Errorf(errStr)
+	}
+	for _, item := range *items {
+		if *item.GitObjectType == "blob" {
+			blah := new(git.GitItem)
+			*blah = item
+			retItems = append(retItems, blah)
+		}
+	}
+
+	// // TODO: get commmit SHA first
+	// branchResp, err := a.Clients.GitClient.GetBranch(a.Ctx, git.GetBranchArgs{
+	// 	RepositoryId: &repoID,
+	// 	Name:         &branch,
+	// 	// Project:               nil,
+	// 	// BaseVersionDescriptor: nil,
+	// })
+	// if err != nil {
+	// 	errStr := fmt.Sprintf("failed to GetBranch for %v: %v\n", repoID, err)
+	// 	log.Error(errStr)
+	// 	return nil, fmt.Errorf(errStr)
+	// }
+	// commitSHA := branchResp.Commit.CommitId
+	//
+	// tree, err := a.Clients.GitClient.GetTree(a.Ctx, git.GetTreeArgs{
+	// 	RepositoryId: &repoID,
+	// 	Sha1:         commitSHA,
+	// 	Recursive:    &[]bool{true}[0],
+	// 	// Project:      nil,
+	// 	// ProjectId:    nil,
+	// 	// FileName:  nil,
+	// })
+	// if err != nil {
+	// 	errStr := fmt.Sprintf("failed to GetTree for %v: %v\n", repoID, err)
+	// 	log.Error(errStr)
+	// 	return nil, fmt.Errorf(errStr)
+	// }
+	// _ = tree
+	return retItems, nil
+}
+
+func (a *AzureClient) GetLockfilesByProject(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
+	var retLockfiles []*structs.VcsFile
+
+	return retLockfiles, nil
+}
