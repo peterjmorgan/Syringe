@@ -56,6 +56,9 @@ func ReadEnvironment() (map[string]string, error) {
 	var githubUrl string
 	var githubOrg string
 
+	var tokenAzure string
+	var azureOrg string
+
 	envMap := make(map[string]string, 5)
 
 	vcsType, err := ReadEnvVar("SYRINGE_VCS")
@@ -101,6 +104,19 @@ func ReadEnvironment() (map[string]string, error) {
 			log.Debugf("GITHUB_ORG not configured")
 		} else {
 			envMap["vcsOrg"] = githubOrg
+		}
+	case "azure":
+		tokenAzure, err = ReadEnvVar("SYRINGE_VCS_TOKEN_AZURE")
+		if err != nil {
+			return nil, fmt.Errorf("failed to read 'SYRINGE_VCS_TOKEN_AZURE' from environment\n")
+		}
+		envMap["vcsToken"] = tokenAzure
+
+		azureOrg, err = ReadEnvVar("SYRINGE_AZURE_ORG")
+		if err != nil {
+			log.Debugf("SYRINGE_AZURE_ORG not configured")
+		} else {
+			envMap["vcsOrg"] = azureOrg
 		}
 	default:
 		log.Fatalf("ReadEnvironment(): default case. This shouldn't happen\n")
