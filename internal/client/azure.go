@@ -3,7 +3,9 @@ package client
 import (
 	"context"
 	"fmt"
+
 	"github.com/microsoft/azure-devops-go-api/azuredevops/build"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/git"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops"
@@ -20,20 +22,22 @@ type AzureClient struct {
 type AzureSubClient struct {
 	CoreClient  core.Client
 	BuildClient build.Client
+	GitClient   git.Client
 }
 
 func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *AzureClient {
-	//var connUrl string
+	// var connUrl string
 	//
-	//if vcsUrl, ok := envMap["vcsUrl"]; ok {
+	// if vcsUrl, ok := envMap["vcsUrl"]; ok {
 	//	connUrl = vcsUrl
-	//}
+	// }
 
 	org := envMap["vcsOrg"]
 	conn := azuredevops.NewPatConnection(org, envMap["vcsToken"])
 	ctx := context.Background()
 	coreClient, err := core.NewClient(ctx, conn)
 	buildClient, err := build.NewClient(ctx, conn)
+	gitClient, err := git.NewClient(ctx, conn)
 	if err != nil {
 		// handle
 	}
@@ -41,6 +45,7 @@ func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *Azu
 		Clients: &AzureSubClient{
 			CoreClient:  coreClient,
 			BuildClient: buildClient,
+			GitClient:   gitClient,
 		},
 		Ctx: ctx,
 	}
@@ -50,11 +55,13 @@ func (a *AzureClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	var localProjects []core.TeamProjectReference
 	var retProjects []*structs.SyringeProject
 
+	// Projects are not 1-to-1 with repositories in ADO
 	projectResp, err := a.Clients.CoreClient.GetProjects(a.Ctx, core.GetProjectsArgs{})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to GetProjects: %v\n", err)
 	}
 
+	// Paginate through ADO Projects
 	for projectResp != nil {
 		for _, proj := range (*projectResp).Value {
 			localProjects = append(localProjects, proj)
@@ -71,29 +78,31 @@ func (a *AzureClient) ListProjects() (*[]*structs.SyringeProject, error) {
 			projectResp = nil
 		}
 	}
+
+	// Iterate through ADO repositories
 	for _, proj := range localProjects {
 
-		// TODO: get the branch of the project
-		branches, err := a.Clients.BuildClient.ListBranches(a.Ctx, build.ListBranchesArgs{
-			Project:           proj.Name,
-			ProviderName:
+		projId := proj.Id.String()
+		repos, err := a.Clients.GitClient.GetRepositories(a.Ctx, git.GetRepositoriesArgs{
+			Project: &projId,
 		})
-		_ = branches
-
 		if err != nil {
-			errStr := fmt.Sprintf("failed to list branches for %v:%v\n", proj.Name, err)
+			errStr := fmt.Sprintf("failed to GetRepositories for %v: %v\n", proj.Name, err)
 			log.Error(errStr)
 			return nil, fmt.Errorf(errStr)
 		}
 
-		retProjects = append(retProjects, &structs.SyringeProject{
-			Id:        int64(proj.Id.ID()),
-			Name:      *proj.Name,
-			Branch:    "",
-			Lockfiles: nil,
-			CiFiles:   nil,
-			Hydrated:  false,
-		})
+		for _, repo := range *repos {
+			retProjects = append(retProjects, &structs.SyringeProject{
+				Id:        int64(repo.Id.ID()),
+				GUID:      *repo.Id,
+				Name:      *repo.Name,
+				Branch:    *repo.DefaultBranch,
+				Lockfiles: nil,
+				CiFiles:   nil,
+				Hydrated:  false,
+			})
+		}
 	}
 	return &retProjects, nil
 }
