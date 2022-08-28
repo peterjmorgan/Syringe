@@ -84,3 +84,43 @@ func TestAzureClient_ListFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestAzureClient_GetLockfilesByProject(t *testing.T) {
+	setupEnv(t, "azure")
+	envMap, _ := utils.ReadEnvironment()
+	a := NewAzureClient(envMap, &testingSyringeOpts)
+
+	// populate with projects
+	_, _ = a.ListProjects()
+
+	type args struct {
+		projectId      int64
+		mainBranchName string
+	}
+
+	tests := []struct {
+		name    string
+		args    args
+		want    []*structs.VcsFile
+		wantLen int
+		wantErr bool
+	}{
+		{"one", args{1249448610, "master"}, nil, 4, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := a.GetLockfilesByProject(tt.args.projectId, tt.args.mainBranchName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetLockfilesByProject() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+				t.Errorf("Azure_GetLockfilesByProject() TypeOf got = %v, want %v", got, tt.want)
+			}
+
+			if len(got) != tt.wantLen {
+				t.Errorf("Azure_GetLockfilesByProject() len(projects) got = %v, want %v", len(got), tt.wantLen)
+			}
+		})
+	}
+}

@@ -3,10 +3,15 @@ package client
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/build"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/git"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/exp/slices"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/core"
@@ -14,9 +19,11 @@ import (
 )
 
 type AzureClient struct {
-	Clients *AzureSubClient
-	Ctx     context.Context
-	OrgName string
+	Clients         *AzureSubClient
+	Ctx             context.Context
+	OrgName         string
+	ProjectMap      map[int64]*git.GitRepository
+	ProjectMapMutex sync.RWMutex
 }
 
 type AzureSubClient struct {
@@ -26,18 +33,15 @@ type AzureSubClient struct {
 }
 
 func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *AzureClient {
-	// var connUrl string
-	//
-	// if vcsUrl, ok := envMap["vcsUrl"]; ok {
-	//	connUrl = vcsUrl
-	// }
 
+	// TODO: handle alternate urls to ADO
 	org := envMap["vcsOrg"]
 	conn := azuredevops.NewPatConnection(org, envMap["vcsToken"])
 	ctx := context.Background()
 	coreClient, err := core.NewClient(ctx, conn)
 	buildClient, err := build.NewClient(ctx, conn)
 	gitClient, err := git.NewClient(ctx, conn)
+
 	if err != nil {
 		// handle
 	}
@@ -47,7 +51,8 @@ func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *Azu
 			BuildClient: buildClient,
 			GitClient:   gitClient,
 		},
-		Ctx: ctx,
+		Ctx:        ctx,
+		ProjectMap: make(map[int64]*git.GitRepository, 0),
 	}
 }
 
@@ -102,35 +107,29 @@ func (a *AzureClient) ListProjects() (*[]*structs.SyringeProject, error) {
 				CiFiles:   nil,
 				Hydrated:  false,
 			})
+			temp := new(git.GitRepository)
+			*temp = repo
+			a.ProjectMap[int64(repo.Id.ID())] = temp
 		}
 	}
 	return &retProjects, nil
 }
 
 func (a *AzureClient) ListFiles(repoID string, branch string) ([]*git.GitItem, error) {
-	// var retTree *git.GitTreeRef
 	var retItems []*git.GitItem
 
 	var recurse git.VersionControlRecursionType = "full"
 	var versionType git.GitVersionType = git.GitVersionType("branch")
 
 	items, err := a.Clients.GitClient.GetItems(a.Ctx, git.GetItemsArgs{
-		RepositoryId: &repoID,
-		// Path:                   nil,
-		// Project:                nil,
-		// ScopePath:              nil,
+		RepositoryId:           &repoID,
 		RecursionLevel:         &recurse,
 		IncludeContentMetadata: &[]bool{true}[0],
-		// LatestProcessedChange:  nil,
-		// Download:               nil,
 		VersionDescriptor: &git.GitVersionDescriptor{
 			Version:        &branch,
 			VersionOptions: nil,
 			VersionType:    &versionType,
-			// VersionType:    &[]git.GitVersionType{git.GitVersionType(branch)}[0],
 		},
-		// IncludeContent:         nil,
-		// ResolveLfs:             nil,
 	})
 	if err != nil {
 		errStr := fmt.Sprintf("failed to GetItems for %v: %v\n", repoID, err)
@@ -145,39 +144,55 @@ func (a *AzureClient) ListFiles(repoID string, branch string) ([]*git.GitItem, e
 		}
 	}
 
-	// // TODO: get commmit SHA first
-	// branchResp, err := a.Clients.GitClient.GetBranch(a.Ctx, git.GetBranchArgs{
-	// 	RepositoryId: &repoID,
-	// 	Name:         &branch,
-	// 	// Project:               nil,
-	// 	// BaseVersionDescriptor: nil,
-	// })
-	// if err != nil {
-	// 	errStr := fmt.Sprintf("failed to GetBranch for %v: %v\n", repoID, err)
-	// 	log.Error(errStr)
-	// 	return nil, fmt.Errorf(errStr)
-	// }
-	// commitSHA := branchResp.Commit.CommitId
-	//
-	// tree, err := a.Clients.GitClient.GetTree(a.Ctx, git.GetTreeArgs{
-	// 	RepositoryId: &repoID,
-	// 	Sha1:         commitSHA,
-	// 	Recursive:    &[]bool{true}[0],
-	// 	// Project:      nil,
-	// 	// ProjectId:    nil,
-	// 	// FileName:  nil,
-	// })
-	// if err != nil {
-	// 	errStr := fmt.Sprintf("failed to GetTree for %v: %v\n", repoID, err)
-	// 	log.Error(errStr)
-	// 	return nil, fmt.Errorf(errStr)
-	// }
-	// _ = tree
 	return retItems, nil
 }
 
+// This is a little messed up because i'm calling repos "projects" and those don't match up in ADOland
+// This should be okay. ListProjects() creates a SyringeProject for each repo in an ADO project.
+// TODO: consider renaming SyringeProject to SyringeRepository as that's a better term for the struct
 func (a *AzureClient) GetLockfilesByProject(projectId int64, mainBranchName string) ([]*structs.VcsFile, error) {
 	var retLockfiles []*structs.VcsFile
+
+	a.ProjectMapMutex.RLock()
+	repo := a.ProjectMap[projectId]
+	a.ProjectMapMutex.RUnlock()
+
+	guid := repo.Id.String()
+
+	projectFiles, err := a.ListFiles(guid, mainBranchName)
+	if err != nil {
+		errStr := fmt.Sprintf("failed to GetLockfilesByProject for %v: %v\n", guid, err)
+		log.Error(errStr)
+		return nil, fmt.Errorf(errStr)
+	}
+
+	supportedLockfiles := utils.GetSupportedLockfiles()
+
+	for _, file := range projectFiles {
+		fileName := filepath.Base(*file.Path)
+		if slices.Contains(supportedLockfiles, fileName) || strings.HasSuffix(fileName, ".csproj") {
+			log.Debugf("Lockfile: %v in %v from project: %v\n", fileName, *file.Path, *repo.Name)
+			// download te file
+			item, err := a.Clients.GitClient.GetItem(a.Ctx, git.GetItemArgs{
+				RepositoryId:   &guid,
+				Path:           file.Path,
+				IncludeContent: &[]bool{true}[0],
+			})
+			if err != nil {
+				errStr := fmt.Sprintf("failed to GetItem for %v: %v\n", fileName, err)
+				log.Error(errStr)
+				return nil, fmt.Errorf(errStr)
+			}
+
+			retLockfiles = append(retLockfiles, &structs.VcsFile{
+				Name:          fileName,
+				Path:          *file.Path,
+				Id:            *file.CommitId, // TODO: look at this
+				Content:       []byte(*item.Content),
+				PhylumProject: nil,
+			})
+		}
+	}
 
 	return retLockfiles, nil
 }
