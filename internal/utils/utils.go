@@ -118,6 +118,12 @@ func ReadEnvironment() (map[string]string, error) {
 		} else {
 			envMap["vcsOrg"] = azureOrg
 		}
+	case "bitbucket_cloud":
+		tokenBitbucketCloud, err := ReadEnvVar("SYRINGE_VCS_TOKEN_BITBUCKETCLOUD")
+		if err != nil {
+			return nil, fmt.Errorf("failed to read 'SYRINGE_VCS_TOKEN_BITBUCKETCLOUD' from environment\n")
+		}
+		envMap["vcsToken"] = tokenBitbucketCloud
 	default:
 		log.Fatalf("ReadEnvironment(): default case. This shouldn't happen\n")
 	}
