@@ -159,6 +159,10 @@ func (a *AzureClient) GetLockfilesByProject(projectId int64, mainBranchName stri
 
 	guid := repo.Id.String()
 
+	if strings.Contains(mainBranchName, "/") {
+		mainBranchName = filepath.Base(mainBranchName)
+	}
+
 	projectFiles, err := a.ListFiles(guid, mainBranchName)
 	if err != nil {
 		errStr := fmt.Sprintf("failed to GetLockfilesByProject for %v: %v\n", guid, err)
