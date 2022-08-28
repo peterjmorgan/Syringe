@@ -23,7 +23,8 @@ func NewClient(clientType string, envMap map[string]string, opts *structs.Syring
 		c = Client2.NewGithubClient(envMap, opts)
 	case "gitlab": // gitlab
 		c = Client2.NewGitlabClient(envMap, opts)
+	case "azure": // azuredevops
+		c = Client2.NewAzureClient(envMap, opts)
 	}
-
 	return c, err
 }

@@ -1,5 +1,7 @@
 package structs
 
+import "github.com/google/uuid"
+
 type VcsFile struct {
 	Name          string
 	Path          string
@@ -15,6 +17,7 @@ type SyringeProject struct {
 	Lockfiles []*VcsFile
 	CiFiles   []*VcsFile
 	Hydrated  bool
+	GUID      uuid.UUID
 }
 
 type PhylumProject struct {
