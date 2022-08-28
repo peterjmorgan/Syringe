@@ -39,7 +39,8 @@ func init() {
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug logging")
-	rootCmd.PersistentFlags().BoolP("mine-only", "m", false, "Mine (owned) projects only")
+	// TODO: consider removing these. Mostly for testing for a specific use case. Perhaps moving to the environment is better
+	rootCmd.PersistentFlags().BoolP("mine-only", "m", false, "(Gitlab) Only projects owned by the user")
 	rootCmd.PersistentFlags().Int32P("ratelimit", "r", 100, "Rate Limit (X/reqs/sec) ")
 	rootCmd.PersistentFlags().StringP("proxyUrl", "p", "", "proxy (https://url:port)")
 }
