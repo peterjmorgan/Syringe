@@ -30,8 +30,7 @@ var gitlabOpts *structs.SyringeOptions = &structs.SyringeOptions{
 func TestNewSyringe(t *testing.T) {
 
 	tests := []struct {
-		name string
-		// mine    bool
+		name    string
 		opts    *structs.SyringeOptions
 		want    *Syringe
 		wantErr bool
@@ -40,6 +39,7 @@ func TestNewSyringe(t *testing.T) {
 		// {"github", false, nil, false},
 		{"gitlab", gitlabOpts, nil, false},
 		{"github", &structs.SyringeOptions{}, nil, false},
+		{"azure", &structs.SyringeOptions{}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,6 +70,7 @@ func TestSyringe_ListProjects(t *testing.T) {
 	}{
 		{"gitlab", gitlabOpts, nil, 213, false},
 		{"github", &structs.SyringeOptions{}, nil, 58, false},
+		{"azure", &structs.SyringeOptions{}, nil, 2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,7 +96,6 @@ func TestSyringe_ListProjects(t *testing.T) {
 
 func TestSyringe_GetLockfilesByProject(t *testing.T) {
 
-	// s, _ := NewSyringe(envMap, true)
 	type args struct {
 		projectId int64
 	}
@@ -110,6 +110,7 @@ func TestSyringe_GetLockfilesByProject(t *testing.T) {
 	}{
 		{"gitlab", args{38265422}, gitlabOpts, &structs.SyringeProject{}, 4, false},
 		{"github", args{325083799}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 1, false},
+		{"azure", args{1249448610}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 4, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -302,6 +303,7 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 	}{
 		{"gitlab", gitlabOpts, &structs.SyringeProject{}, 4, false},
 		{"github", &structs.SyringeOptions{}, &structs.SyringeProject{}, 57, false},
+		{"azure", &structs.SyringeOptions{}, &structs.SyringeProject{}, 4, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

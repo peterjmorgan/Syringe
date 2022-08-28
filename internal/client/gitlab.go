@@ -126,7 +126,7 @@ func (g *GitlabClient) ListProjects() (*[]*structs.SyringeProject, error) {
 }
 
 func (g *GitlabClient) ListFiles(projectId int64, branch string) ([]*gitlab.TreeNode, error) {
-	files, resp, err := g.Client.Repositories.ListTree(int(projectId), &gitlab.ListTreeOptions{
+	files, _, err := g.Client.Repositories.ListTree(int(projectId), &gitlab.ListTreeOptions{
 		Path:      gitlab.String("/"),
 		Ref:       gitlab.String(branch),
 		Recursive: gitlab.Bool(true),
@@ -135,7 +135,6 @@ func (g *GitlabClient) ListFiles(projectId int64, branch string) ([]*gitlab.Tree
 		// log.Warnf("Failed to ListTree from %v: %v\n", projectId, err)
 		return nil, err
 	}
-	_ = resp // TODO: fixme
 	return files, nil
 }
 
