@@ -13,18 +13,18 @@ type BitbucketCloudClient struct {
 	Owner  string
 }
 
-//TODO:
-//  need: Owner
-func NewBitbucketCloudClient(envMap map[string]string, opts *structs.SyringeOptions) *BitbucketCloudClient {
+//func NewBitbucketCloudClient(envMap map[string]string, opts *structs.SyringeOptions) *BitbucketCloudClient {
+func NewBitbucketCloudClient(configData *structs.ConfigThing, opts *structs.SyringeOptions) *BitbucketCloudClient {
 	//token := envMap["vcsToken"]
-	owner := "peter_morgan_"
+	//owner := "peter_morgan_"
 
 	// Have to use Oauth2 client credentials config. Could not auth to the API any other way.
-	client := bitbucket.NewOAuthClientCredentials("APbFeKnRHr2zBk6v6w", "qP2aBzrzQzmDUbnHnYLScStwxDuHQTFV")
+	//client := bitbucket.NewOAuthClientCredentials("APbFeKnRHr2zBk6v6w", "qP2aBzrzQzmDUbnHnYLScStwxDuHQTFV")
+	client := bitbucket.NewOAuthClientCredentials(configData.Associated["bbClientId"], configData.Associated["bbClientSecret"])
 
 	return &BitbucketCloudClient{
 		Client: client,
-		Owner:  owner,
+		Owner:  configData.Associated["bbOwner"],
 	}
 }
 
@@ -88,4 +88,10 @@ func (b *BitbucketCloudClient) ListFiles(repoSlug string, branch string) (*[]*bi
 	}
 
 	return &retFiles, nil
+}
+
+func (b *BitbucketCloudClient) GetLockfilesByProject(projectId int64, branch string) ([]*structs.VcsFile, error) {
+	var retFiles []*structs.VcsFile
+
+	return retFiles, nil
 }

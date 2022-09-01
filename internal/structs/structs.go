@@ -1,6 +1,8 @@
 package structs
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+)
 
 type VcsFile struct {
 	Name          string
@@ -31,4 +33,12 @@ type SyringeOptions struct {
 	MineOnly  bool
 	RateLimit int
 	ProxyUrl  string
+}
+
+type ConfigThing struct {
+	VcsType     string
+	VcsToken    string
+	Associated  map[string]string
+	PhylumToken string
+	PhylumGroup string
 }
