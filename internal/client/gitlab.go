@@ -24,7 +24,8 @@ type GitlabClient struct {
 }
 
 // func NewGitlabClient(envMap map[string]string, mineOnly bool, ratelimit int, proxyUrl string) *GitlabClient {
-func NewGitlabClient(envMap map[string]string, opts *structs.SyringeOptions) *GitlabClient {
+//func NewGitlabClient(envMap map[string]string, opts *structs.SyringeOptions) *GitlabClient {
+func NewGitlabClient(configData *structs.ConfigThing, opts *structs.SyringeOptions) *GitlabClient {
 	var gitlabClient *gitlab.Client
 	var err error
 	var mineOnly bool = false
@@ -33,8 +34,9 @@ func NewGitlabClient(envMap map[string]string, opts *structs.SyringeOptions) *Gi
 		gitlab.WithCustomRetry(retryablehttp.DefaultRetryPolicy),
 	}
 
-	if vcsUrl, ok := envMap["vcsUrl"]; ok {
-		gitlab.WithBaseURL(vcsUrl)
+	if vcsUrl, ok := configData.Associated["vcsUrl"]; ok {
+		//gitlab.WithBaseURL(vcsUrl)
+		clientOptions = append(clientOptions, gitlab.WithBaseURL(vcsUrl))
 	}
 
 	v := reflect.ValueOf(opts)
@@ -60,7 +62,7 @@ func NewGitlabClient(envMap map[string]string, opts *structs.SyringeOptions) *Gi
 		mineOnly = opts.MineOnly
 	}
 
-	gitlabClient, err = gitlab.NewClient(envMap["vcsToken"], clientOptions...)
+	gitlabClient, err = gitlab.NewClient(configData.VcsToken, clientOptions...)
 
 	if err != nil {
 		log.Fatalf("Failed to create gitlab client: %v\n", err)

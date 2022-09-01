@@ -32,11 +32,13 @@ type AzureSubClient struct {
 	GitClient   git.Client
 }
 
-func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *AzureClient {
+//func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *AzureClient {
+func NewAzureClient(configData *structs.ConfigThing, opts *structs.SyringeOptions) *AzureClient {
 
 	// TODO: handle alternate urls to ADO
-	org := envMap["vcsOrg"]
-	conn := azuredevops.NewPatConnection(org, envMap["vcsToken"])
+	//org := envMap["vcsOrg"]
+	//conn := azuredevops.NewPatConnection(org, envMap["vcsToken"])
+	conn := azuredevops.NewPatConnection(configData.Associated["azureOrg"], configData.VcsToken)
 	ctx := context.Background()
 	coreClient, err := core.NewClient(ctx, conn)
 	buildClient, err := build.NewClient(ctx, conn)

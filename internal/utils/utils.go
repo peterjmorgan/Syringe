@@ -1,11 +1,18 @@
 package utils
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"github.com/manifoldco/promptui"
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
 )
 
 // Branches to examine for "main" branch
@@ -33,12 +40,12 @@ func GetSupportedLockfiles() []string {
 }
 
 // CI Files to target
-func GetGitlabCIFiles() []string {
-	return []string{
-		".gitlab-ci.yml",
-		".gitlab-ci.yaml",
-	}
-}
+//func GetGitlabCIFiles() []string {
+//	return []string{
+//		".gitlab-ci.yml",
+//		".gitlab-ci.yaml",
+//	}
+//}
 
 func ReadEnvVar(key string) (string, error) {
 	if value, ok := os.LookupEnv(key); ok {
@@ -118,6 +125,12 @@ func ReadEnvironment() (map[string]string, error) {
 		} else {
 			envMap["vcsOrg"] = azureOrg
 		}
+	case "bitbucket_cloud":
+		tokenBitbucketCloud, err := ReadEnvVar("SYRINGE_VCS_TOKEN_BITBUCKETCLOUD")
+		if err != nil {
+			return nil, fmt.Errorf("failed to read 'SYRINGE_VCS_TOKEN_BITBUCKETCLOUD' from environment\n")
+		}
+		envMap["vcsToken"] = tokenBitbucketCloud
 	default:
 		log.Fatalf("ReadEnvironment(): default case. This shouldn't happen\n")
 	}
@@ -147,4 +160,68 @@ func RemoveTempDir(tempDir string) {
 
 func GeneratePhylumProjectName(projectName string, lockfilePath string, projectId int64) string {
 	return fmt.Sprintf("SYR-%v__%v__%v", projectName, projectId, lockfilePath)
+}
+
+func PromptForString(message string, lenRequirement int) (string, error) {
+	prompt := promptui.Prompt{
+		Label: message,
+		Validate: func(input string) error {
+			strLen := len(input)
+			if strLen != lenRequirement && lenRequirement != -1 {
+				return errors.New("invalid length")
+			}
+			return nil
+		},
+	}
+
+	result, err := prompt.Run()
+	if err != nil {
+		fmt.Printf("PromptForString: %v failed:%v\n", message, err)
+		return "", err
+	}
+	return result, nil
+}
+
+func ReadConfigFile() (*structs.ConfigThing, error) {
+	if _, err := os.Stat("syringe_config.yaml"); err == nil {
+		// exists
+		fileData, err1 := ioutil.ReadFile("syringe_config.yaml")
+		if err1 != nil {
+			fmt.Printf("Failed to read syringe_config.yaml: %v\n", err1)
+			return nil, fmt.Errorf("failed to read file")
+		}
+
+		configData := new(structs.ConfigThing)
+		err2 := yaml.Unmarshal(fileData, configData)
+		if err2 != nil {
+			fmt.Printf("Failed to unmarshall config data: %v\n", err2)
+			return nil, fmt.Errorf("failed to unmarshall config data")
+		}
+
+		return configData, nil
+	}
+	return nil, fmt.Errorf("config file not found")
+}
+
+func PhylumGetAuthToken() (string, error) {
+	var retStr string
+	var stdErrBytes bytes.Buffer
+
+	var authTokenArgs = []string{"auth", "token"}
+	authTokenCmd := exec.Command("phylum", authTokenArgs...)
+	authTokenCmd.Stderr = &stdErrBytes
+
+	retBytes, err := authTokenCmd.Output()
+	if err != nil {
+		log.Errorf("Failed to exec 'phylum auth token': %v\n", err)
+		log.Errorf(stdErrBytes.String())
+		return "", err
+	}
+	stdErrString := stdErrBytes.String()
+	_ = stdErrString // prob will need this later
+
+	retStr = string(retBytes)
+	retStr = strings.Trim(retStr, "\n")
+
+	return retStr, nil
 }
