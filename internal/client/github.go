@@ -21,17 +21,18 @@ type GithubClient struct {
 	OrgName string
 }
 
-func NewGithubClient(envMap map[string]string, opts *structs.SyringeOptions) *GithubClient {
+//func NewGithubClient(envMap map[string]string, opts *structs.SyringeOptions) *GithubClient {
+func NewGithubClient(configData *structs.ConfigThing, opts *structs.SyringeOptions) *GithubClient {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: envMap["vcsToken"]},
+		&oauth2.Token{AccessToken: configData.VcsToken},
 	)
 
 	gh := github.NewClient(oauth2.NewClient(ctx, ts))
 	return &GithubClient{
 		Client:  gh,
 		Ctx:     ctx,
-		OrgName: envMap["vcsOrg"],
+		OrgName: configData.Associated["githubOrg"],
 	}
 }
 

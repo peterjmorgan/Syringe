@@ -56,12 +56,20 @@ var runPhylumCmd = &cobra.Command{
 			ProxyUrl:  proxyUrl,
 		}
 
-		envMap, err := utils.ReadEnvironment()
+		//envMap, err := utils.ReadEnvironment()
+		//if err != nil {
+		//	log.Fatalf("Failed to read environment variables: %v\n", err)
+		//	return
+		//}
+
+		configData, err := utils.ReadConfigFile()
 		if err != nil {
-			log.Fatalf("Failed to read environment variables: %v\n", err)
+			log.Fatalf("Failed to read config file")
 			return
 		}
-		s, err := Syringe2.NewSyringe(envMap, &opts)
+
+		//s, err := Syringe2.NewSyringe(envMap, &opts)
+		s, err := Syringe2.NewSyringe(configData, &opts)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)
 			return
@@ -195,6 +203,7 @@ var runPhylumCmd = &cobra.Command{
 				wgAnalyze.Add(1)
 				go func(inLockfile *structs.VcsFile) {
 					defer wgAnalyze.Done()
+					log.Debugf("Analyzing %v from %v\n", inLockfile.Path, project.Name)
 					if err = sem.Acquire(ctx, 1); err != nil {
 						log.Errorf("Failed to acquire semaphore: %v\n", err)
 						return
