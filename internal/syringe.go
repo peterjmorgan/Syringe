@@ -127,6 +127,7 @@ func (s *Syringe) GetAllLockfiles() error {
 		wg.Add(1)
 		go func(id int64) {
 			defer wg.Done()
+			log.Debugf("Getting lockfiles for %v\n", kID)
 			_, err := s.GetLockfilesByProject(id)
 			lockfilesBar.Add(1)
 			if err != nil {

@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/github"
 	"github.com/peterjmorgan/Syringe/internal/structs"
@@ -39,7 +40,7 @@ func NewGithubClient(configData *structs.ConfigThing, opts *structs.SyringeOptio
 func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 	var localProjects []*structs.SyringeProject
 	opt := &github.RepositoryListByOrgOptions{
-		ListOptions: github.ListOptions{PerPage: 20},
+		ListOptions: github.ListOptions{PerPage: 200},
 	}
 
 	_, resp, err := g.Client.Repositories.ListByOrg(g.Ctx, g.OrgName, opt)
@@ -54,7 +55,11 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 		listProjectsPB.Add(1)
 
 		githubRepos, resp, err := g.Client.Repositories.ListByOrg(g.Ctx, g.OrgName, opt)
-		if err != nil {
+		if rl_err, ok := err.(*github.RateLimitError); ok {
+			log.Printf("ListByOrg ratelimited. Pausing until %s", rl_err.Rate.Reset.Time.String())
+			time.Sleep(time.Until(rl_err.Rate.Reset.Time))
+			continue
+		} else if err != nil {
 			log.Errorf("Failed to get github repositories: %v\n", err)
 			return nil, err
 		}
@@ -80,39 +85,6 @@ func (g *GithubClient) ListProjects() (*[]*structs.SyringeProject, error) {
 }
 
 func (g *GithubClient) ListFiles(repoName string, branch string) (*github.Tree, error) {
-
-	// fileContent, directoryContent, resp, err := g.Client.Repositories.GetContents(g.Ctx, g.OrgName, repoName, "/", &github.RepositoryContentGetOptions{})
-	// if err != nil {
-	// 	log.Errorf("Failed to GetContents(%v): %v\n", repoName, err)
-	// 	log.Errorf("Resp: %v\n", resp.StatusCode)
-	// 	return nil, err
-	// }
-	//
-	// for _, c := range directoryContent {
-	// 	switch *c.Type {
-	// 	case "file":
-	// 		contentHandle, err := g.Client.Repositories.DownloadContents(g.Ctx, g.OrgName, repoName, *c.Path, &github.RepositoryContentGetOptions{})
-	// 		if err != nil {
-	// 			log.Errorf("Failed to DownloadContents(%v): %v\n", repoName, err)
-	// 			return nil, err
-	// 		}
-	// 		defer contentHandle.Close()
-	// 		fileData, err := ioutil.ReadAll(contentHandle)
-	// 		if err != nil {
-	// 			log.Errorf("Failed to ReadAll(%v): %v\n", contentHandle, err)
-	// 			return nil, err
-	// 		}
-	// 		temp := structs.VcsFile{
-	// 			Name:          *c.Name,
-	// 			Path:          *c.Path,
-	// 			Id:            *c.SHA,
-	// 			Content:       fileData,
-	// 			PhylumProject: nil,
-	// 		}
-	//
-	// 	case "dir":
-	// 	}
-
 	var resultsTree github.Tree
 
 	commits, resp, err := g.Client.Repositories.ListCommits(g.Ctx, g.OrgName, repoName, &github.CommitsListOptions{})
@@ -158,6 +130,10 @@ func (g *GithubClient) GetLockfilesByProject(projectId int64, mainBranchName str
 
 	// Get Repo name via ID
 	repo, _, err := g.Client.Repositories.GetByID(g.Ctx, projectId)
+	if err != nil {
+		log.Errorf("Failed to GetRepoByID %v: %v\n", projectId, err)
+		return nil, err
+	}
 
 	projectTree, err := g.ListFiles(*repo.Name, mainBranchName)
 	if err != nil {
