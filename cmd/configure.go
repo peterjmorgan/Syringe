@@ -22,8 +22,7 @@ var configureCmd = &cobra.Command{
 	Short: "configure",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		// TODO: Check for existing configuration
-		configData, err := utils.ReadConfigFile()
+		configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
 		if err == nil {
 			configJson, err3 := json.MarshalIndent(configData, "", "  ")
 			if err3 != nil {
@@ -165,8 +164,6 @@ var configureCmd = &cobra.Command{
 				return
 			}
 		} else {
-			//phylumToken = ""
-			// TODO: pull from phylum auth token
 			phylumToken, err = utils.PhylumGetAuthToken()
 			if err != nil {
 				fmt.Printf("Failed to read phylum auth token from locally-installed 'phylum'")
