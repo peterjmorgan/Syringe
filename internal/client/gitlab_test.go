@@ -2,24 +2,20 @@ package client
 
 import (
 	"fmt"
+	"github.com/peterjmorgan/Syringe/internal/structs"
+	"github.com/peterjmorgan/Syringe/internal/utils"
 	"reflect"
 	"testing"
-
-	"github.com/peterjmorgan/Syringe/internal/utils"
-
-	"github.com/joho/godotenv"
-	"github.com/peterjmorgan/Syringe/internal/structs"
-	log "github.com/sirupsen/logrus"
 )
 
-func setupEnv(t *testing.T, envFilename string) {
-	filename := fmt.Sprintf("../../.env_%v", envFilename)
-
-	err := godotenv.Load(filename)
-	if err != nil {
-		log.Fatalf("Failed to load .env for testing: %v\n", err)
-	}
-}
+//func setupEnv(t *testing.T, envFilename string) {
+//	filename := fmt.Sprintf("../../.env_%v", envFilename)
+//
+//	err := godotenv.Load(filename)
+//	if err != nil {
+//		log.Fatalf("Failed to load .env for testing: %v\n", err)
+//	}
+//}
 
 var testingSyringeOpts structs.SyringeOptions = structs.SyringeOptions{
 	MineOnly:  true,
@@ -28,9 +24,11 @@ var testingSyringeOpts structs.SyringeOptions = structs.SyringeOptions{
 }
 
 func TestGitlabClient_ListProjects(t *testing.T) {
-	setupEnv(t, "gitlab")
-	envMap, _ := utils.ReadEnvironment()
-	g := NewGitlabClient(envMap, &testingSyringeOpts)
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	g := NewGitlabClient(configData, &testingSyringeOpts)
 
 	tests := []struct {
 		name    string
@@ -59,10 +57,12 @@ func TestGitlabClient_ListProjects(t *testing.T) {
 }
 
 func TestGitlabClient_GetLockfiles(t *testing.T) {
-	setupEnv(t, "gitlab")
-	envMap, _ := utils.ReadEnvironment()
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	g := NewGitlabClient(configData, &testingSyringeOpts)
 
-	g := NewGitlabClient(envMap, &testingSyringeOpts)
 	type args struct {
 		projectId      int64
 		mainBranchName string

@@ -42,3 +42,7 @@ type ConfigThing struct {
 	PhylumToken string
 	PhylumGroup string
 }
+
+type TestConfigData struct {
+	Filename string
+}

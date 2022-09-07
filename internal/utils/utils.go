@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"github.com/manifoldco/promptui"
 	"github.com/peterjmorgan/Syringe/internal/structs"
-	"io/ioutil"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -159,7 +159,7 @@ func RemoveTempDir(tempDir string) {
 }
 
 func GeneratePhylumProjectName(projectName string, lockfilePath string, projectId int64) string {
-	return fmt.Sprintf("SYR-%v__%v__%v", projectName, projectId, lockfilePath)
+	return fmt.Sprintf("SYR-%v__%v", projectName, lockfilePath)
 }
 
 func PromptForString(message string, lenRequirement int) (string, error) {
@@ -182,10 +182,19 @@ func PromptForString(message string, lenRequirement int) (string, error) {
 	return result, nil
 }
 
-func ReadConfigFile() (*structs.ConfigThing, error) {
-	if _, err := os.Stat("syringe_config.yaml"); err == nil {
+func ReadConfigFile(testConfigData *structs.TestConfigData) (*structs.ConfigThing, error) {
+	var filename string = "syringe_config.yaml"
+
+	v := reflect.ValueOf(testConfigData)
+	if v.Kind() == reflect.Ptr && !v.IsNil() {
+		if testConfigData.Filename != "" {
+			filename = testConfigData.Filename
+		}
+	}
+
+	if _, err := os.Stat(filename); err == nil {
 		// exists
-		fileData, err1 := ioutil.ReadFile("syringe_config.yaml")
+		fileData, err1 := os.ReadFile(filename)
 		if err1 != nil {
 			fmt.Printf("Failed to read syringe_config.yaml: %v\n", err1)
 			return nil, fmt.Errorf("failed to read file")

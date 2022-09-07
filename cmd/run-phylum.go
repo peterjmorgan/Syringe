@@ -62,7 +62,7 @@ var runPhylumCmd = &cobra.Command{
 		//	return
 		//}
 
-		configData, err := utils.ReadConfigFile()
+		configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
 		if err != nil {
 			log.Fatalf("Failed to read config file")
 			return
@@ -160,7 +160,7 @@ var runPhylumCmd = &cobra.Command{
 		//	close(chProjectResults)
 		// }()
 
-		if err = s.GetAllLockfiles(); err != nil {
+		if err = s.GetAllLockfilesSerial(); err != nil {
 			log.Errorf("Failed to GetAllLockfiles(): %v\n", err)
 		}
 

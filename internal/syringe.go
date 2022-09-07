@@ -2,8 +2,10 @@ package syringePackage
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -48,7 +50,7 @@ type Syringe struct {
 	RateLimit        int
 }
 
-//func NewSyringe(envMap map[string]string, opts *structs.SyringeOptions) (*Syringe, error) {
+// func NewSyringe(envMap map[string]string, opts *structs.SyringeOptions) (*Syringe, error) {
 func NewSyringe(configData *structs.ConfigThing, opts *structs.SyringeOptions) (*Syringe, error) {
 
 	// client, err := NewClient(envMap["vcs"], envMap, mineOnly, ratelimit, proxyUrl)
@@ -109,8 +111,10 @@ func (s *Syringe) GetLockfilesByProject(projectId int64) (*structs.SyringeProjec
 		// log.Warnf("Failed to get lockfiles: %v\n", err)
 		return nil, err
 	}
-	theProject.Lockfiles = lockfiles
-	theProject.Hydrated = true
+	if lockfiles != nil {
+		theProject.Lockfiles = lockfiles
+		theProject.Hydrated = true
+	}
 
 	s.ProjectsMapMutex.Lock()
 	s.ProjectsMap[projectId] = theProject
@@ -119,14 +123,33 @@ func (s *Syringe) GetLockfilesByProject(projectId int64) (*structs.SyringeProjec
 	return theProject, nil
 }
 
+func (s *Syringe) GetAllLockfilesSerial() error {
+	lockfilesBar := progressbar.NewOptions(len(*s.Projects), progressbar.OptionSetDescription("Getting Lockfiles"))
+
+	for kID, _ := range s.ProjectsMap {
+		log.Debugf("Getting lockfiles for %v\n", kID)
+		_, err := s.GetLockfilesByProject(kID)
+		lockfilesBar.Add(1)
+		if err != nil {
+			log.Warnf("failed to GetLockFilesByProject() ID=%v: %v\n", kID, err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Syringe) GetAllLockfiles() error {
 	var wg sync.WaitGroup
 	lockfilesBar := progressbar.NewOptions(len(*s.Projects), progressbar.OptionSetDescription("Getting Lockfiles"))
 
+	sem := semaphore.NewWeighted(50)
+
 	for kID, _ := range s.ProjectsMap {
 		wg.Add(1)
+		sem.Acquire(context.Background(), 1)
 		go func(id int64) {
 			defer wg.Done()
+			defer sem.Release(1)
 			log.Debugf("Getting lockfiles for %v\n", kID)
 			_, err := s.GetLockfilesByProject(id)
 			lockfilesBar.Add(1)
@@ -346,6 +369,20 @@ func (s *Syringe) PhylumCreateProject(projectName string, projects chan<- *struc
 // }
 
 func (s *Syringe) PhylumRunAnalyze(phylumProjectFile structs.PhylumProject, lockfile *structs.VcsFile, phylumProjectName string) error {
+
+	// if PhylumCreateProject failed
+	if (phylumProjectFile == structs.PhylumProject{}) {
+		log.Debugf("PhylumRunAnalyze: missing PhylumProject for %v, creating\n", phylumProjectName)
+		chCreated := make(chan *structs.PhylumProject, 3000)
+		errCreate := s.PhylumCreateProject(phylumProjectName, chCreated)
+		if errCreate != nil {
+			log.Errorf("PhylumRunAnalyze: failed to create project %v: %v", phylumProjectName, errCreate)
+			return errCreate
+		}
+		tempProject := <-chCreated
+		phylumProjectFile = *tempProject
+	}
+
 	// create temp directory to write the lockfile content for analyze
 	log.Debugf("Analyzing %v\n", phylumProjectFile.Name)
 	tempDir, err := ioutil.TempDir("", "syringe-analyze")

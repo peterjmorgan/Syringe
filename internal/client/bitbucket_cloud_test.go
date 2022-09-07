@@ -1,18 +1,20 @@
 package client
 
 import (
-	"reflect"
-	"testing"
-
+	"fmt"
 	"github.com/ktrysmt/go-bitbucket"
 	"github.com/peterjmorgan/Syringe/internal/structs"
 	"github.com/peterjmorgan/Syringe/internal/utils"
+	"reflect"
+	"testing"
 )
 
 func TestBitbucketCloudClient_ListProjects(t *testing.T) {
-	setupEnv(t, "bitbucket")
-	envMap, _ := utils.ReadEnvironment()
-	b := NewBitbucketCloudClient(envMap, &structs.SyringeOptions{})
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	b := NewBitbucketCloudClient(configData, &testingSyringeOpts)
 
 	tests := []struct {
 		name    string
@@ -36,9 +38,11 @@ func TestBitbucketCloudClient_ListProjects(t *testing.T) {
 }
 
 func TestBitbucketCloudClient_ListFiles(t *testing.T) {
-	setupEnv(t, "bitbucket")
-	envMap, _ := utils.ReadEnvironment()
-	b := NewBitbucketCloudClient(envMap, &structs.SyringeOptions{})
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	b := NewBitbucketCloudClient(configData, &testingSyringeOpts)
 
 	type args struct {
 		repoSlug string
@@ -72,9 +76,11 @@ func TestBitbucketCloudClient_ListFiles(t *testing.T) {
 }
 
 func TestBitbucketCloudClient_GetLockfilesByProject(t *testing.T) {
-	setupEnv(t, "bitbucket")
-	envMap, _ := utils.ReadEnvironment()
-	b := NewBitbucketCloudClient(envMap, &structs.SyringeOptions{})
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	b := NewBitbucketCloudClient(configData, &testingSyringeOpts)
 
 	_, _ = b.ListProjects()
 

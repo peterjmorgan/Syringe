@@ -52,18 +52,12 @@ var listProjectsCmd = &cobra.Command{
 			ProxyUrl:  proxyUrl,
 		}
 
-		//envMap, err := utils.ReadEnvironment()
-		//if err != nil {
-		//	log.Fatalf("Failed to read environment variables: %v\n", err)
-		//	retur
-		//}
-		configData, err := utils.ReadConfigFile()
+		configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
 		if err != nil {
 			log.Fatalf("Failed to read config file")
 			return
 		}
 
-		//s, err := Syringe2.NewSyringe(envMap, &opts)
 		s, err := Syringe2.NewSyringe(configData, &opts)
 		if err != nil {
 			log.Fatal("Failed to create NewSyringe(): %v\n", err)

@@ -1,26 +1,29 @@
 package client
 
 import (
-	"reflect"
-	"testing"
-
+	"fmt"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/git"
 	"github.com/peterjmorgan/Syringe/internal/structs"
 	"github.com/peterjmorgan/Syringe/internal/utils"
+	"reflect"
+	"testing"
 )
 
 func TestNewAzureClient(t *testing.T) {
-	setupEnv(t, "azure")
-	envMap, _ := utils.ReadEnvironment()
-	a := NewAzureClient(envMap, &testingSyringeOpts)
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	a := NewAzureClient(configData, &testingSyringeOpts)
 	_ = a
-
 }
 
 func TestAzureClient_ListProjects(t *testing.T) {
-	setupEnv(t, "azure")
-	envMap, _ := utils.ReadEnvironment()
-	a := NewAzureClient(envMap, &testingSyringeOpts)
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	a := NewAzureClient(configData, &testingSyringeOpts)
 
 	tests := []struct {
 		name    string
@@ -49,9 +52,11 @@ func TestAzureClient_ListProjects(t *testing.T) {
 }
 
 func TestAzureClient_ListFiles(t *testing.T) {
-	setupEnv(t, "azure")
-	envMap, _ := utils.ReadEnvironment()
-	a := NewAzureClient(envMap, &testingSyringeOpts)
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	a := NewAzureClient(configData, &testingSyringeOpts)
 
 	type args struct {
 		repoID string
@@ -86,9 +91,11 @@ func TestAzureClient_ListFiles(t *testing.T) {
 }
 
 func TestAzureClient_GetLockfilesByProject(t *testing.T) {
-	setupEnv(t, "azure")
-	envMap, _ := utils.ReadEnvironment()
-	a := NewAzureClient(envMap, &testingSyringeOpts)
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{})
+	if err != nil {
+		fmt.Printf("failed to read config file: %v\n", err)
+	}
+	a := NewAzureClient(configData, &testingSyringeOpts)
 
 	// populate with projects
 	_, _ = a.ListProjects()
