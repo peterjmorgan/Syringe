@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/peterjmorgan/go-phylum"
 	"golang.org/x/sync/semaphore"
 	"io/ioutil"
 	"os"
@@ -194,6 +195,41 @@ func (s *Syringe) PhylumGetProjectMap(retVal **map[string]structs.PhylumProject)
 	log.Debugf("Found %v phylum projects\n", len(returnMap))
 	*retVal = &returnMap
 	return nil
+}
+
+// Now using the API instead of CLI
+func (s *Syringe) PhylumGetProjects() (*map[string]structs.PhylumProject, error) {
+	var projects []phylum.ProjectSummaryResponse
+	var err error
+
+	p := phylum.NewClient()
+	if s.PhylumGroupName != "" {
+		projects, err = p.ListGroupProjects(s.PhylumGroupName)
+	} else {
+		projects, err = p.ListProjects()
+	}
+	if err != nil {
+		log.Errorf("failed to get projects")
+		return nil, nil
+	}
+	retProjects := make(map[string]structs.PhylumProject, len(projects))
+
+	for _, proj := range projects {
+		var eco string
+		if proj.Ecosystem == nil {
+			eco = ""
+		} else {
+			eco = *proj.Ecosystem
+		}
+		newPhylumProject := new(structs.PhylumProject)
+		newPhylumProject.Name = proj.Name
+		newPhylumProject.ID = proj.Id.String()
+		newPhylumProject.UpdatedAt = proj.UpdatedAt.String()
+		newPhylumProject.Ecosystem = eco
+		retProjects[proj.Name] = *newPhylumProject
+	}
+
+	return &retProjects, nil
 }
 
 // IntegratePhylumProjectList

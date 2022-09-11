@@ -21,7 +21,7 @@ type BitbucketCloudClient struct {
 	ProjectMapMutex sync.RWMutex
 }
 
-//func NewBitbucketCloudClient(envMap map[string]string, opts *structs.SyringeOptions) *BitbucketCloudClient {
+// func NewBitbucketCloudClient(envMap map[string]string, opts *structs.SyringeOptions) *BitbucketCloudClient {
 func NewBitbucketCloudClient(configData *structs.ConfigThing, opts *structs.SyringeOptions) *BitbucketCloudClient {
 	//token := envMap["vcsToken"]
 	//owner := "peter_morgan_"
@@ -31,8 +31,8 @@ func NewBitbucketCloudClient(configData *structs.ConfigThing, opts *structs.Syri
 	client := bitbucket.NewOAuthClientCredentials(configData.Associated["bbClientId"], configData.Associated["bbClientSecret"])
 
 	return &BitbucketCloudClient{
-		Client: client,
-		Owner:  configData.Associated["bbOwner"],
+		Client:     client,
+		Owner:      configData.Associated["bbOwner"],
 		ProjectMap: make(map[int64]*bitbucket.Repository, 0),
 	}
 }
@@ -45,7 +45,7 @@ func (b *BitbucketCloudClient) ListProjects() (*[]*structs.SyringeProject, error
 		Role:  "member",
 	})
 	if err != nil {
-		errStr := fmt.Sprintf("failed to ListProjects: %v\n", err)
+		errStr := fmt.Sprintf("BitBucket: failed to ListProjects: %v\n", err)
 		log.Error(errStr)
 		return nil, fmt.Errorf(errStr)
 	}
@@ -84,7 +84,7 @@ func (b *BitbucketCloudClient) ListFiles(repoSlug string, branch string) (*[]*bi
 		MaxDepth: 500,
 	})
 	if err != nil {
-		errStr := fmt.Sprintf("failed to ListFiles for %v: %v\n", repoSlug, err)
+		errStr := fmt.Sprintf("BitBucket: failed to ListFiles for %v: %v\n", repoSlug, err)
 		log.Error(errStr)
 		return nil, fmt.Errorf(errStr)
 	}
@@ -111,7 +111,7 @@ func (b *BitbucketCloudClient) GetLockfilesByProject(projectId int64, mainBranch
 
 	projectFiles, err := b.ListFiles(repo.Name, repo.Mainbranch.Name)
 	if err != nil {
-		errStr := fmt.Sprintf("failed to GetLockfilesByProject for %v: %v\n", repo.Name, err)
+		errStr := fmt.Sprintf("BitBucket: failed to GetLockfilesByProject for %v: %v\n", repo.Name, err)
 		log.Error(errStr)
 		return nil, fmt.Errorf(errStr)
 	}
@@ -146,7 +146,7 @@ func (b *BitbucketCloudClient) GetLockfilesByProject(projectId int64, mainBranch
 			// 	MaxDepth: 500,
 			// })
 			if err != nil {
-				errStr := fmt.Sprintf("failed to GetFileContent for %v: %v\n", fileName, err)
+				errStr := fmt.Sprintf("BitBucket: failed to GetFileContent for %v: %v\n", fileName, err)
 				log.Error(errStr)
 				return nil, fmt.Errorf(errStr)
 			}

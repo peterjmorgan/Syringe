@@ -8,44 +8,33 @@ import (
 	"github.com/peterjmorgan/Syringe/internal/structs"
 	"github.com/peterjmorgan/Syringe/internal/utils"
 
-	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
 )
 
-func setupEnv(t *testing.T, envFilename string) {
-	filename := fmt.Sprintf("../.env_%v", envFilename)
-
-	err := godotenv.Load(filename)
-	if err != nil {
-		log.Fatalf("Failed to load .env for testing: %v\n", err)
-	}
-}
-
 var gitlabOpts *structs.SyringeOptions = &structs.SyringeOptions{
-	MineOnly:  true,
-	RateLimit: 0,
-	ProxyUrl:  "",
+	MineOnly: true,
 }
 
 func TestNewSyringe(t *testing.T) {
-
 	tests := []struct {
 		name    string
 		opts    *structs.SyringeOptions
 		want    *Syringe
 		wantErr bool
 	}{
-		// {"gitlab", true, nil, false},
-		// {"github", false, nil, false},
 		{"gitlab", gitlabOpts, nil, false},
 		{"github", &structs.SyringeOptions{}, nil, false},
 		{"azure", &structs.SyringeOptions{}, nil, false},
+		{"bitbucket", &structs.SyringeOptions{}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setupEnv(t, tt.name)
-			envMap, _ := utils.ReadEnvironment()
-			got, err := NewSyringe(envMap, tt.opts)
+			configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", tt.name)})
+			if err != nil {
+				log.Fatalf("Failed to read config file")
+				return
+			}
+			got, err := NewSyringe(configData, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSyringe() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -58,9 +47,6 @@ func TestNewSyringe(t *testing.T) {
 }
 
 func TestSyringe_ListProjects(t *testing.T) {
-
-	// s, _ := NewSyringe(envMap, true)
-
 	tests := []struct {
 		name    string
 		opts    *structs.SyringeOptions
@@ -69,14 +55,19 @@ func TestSyringe_ListProjects(t *testing.T) {
 		wantErr bool
 	}{
 		{"gitlab", gitlabOpts, nil, 213, false},
-		{"github", &structs.SyringeOptions{}, nil, 58, false},
+		{"github", &structs.SyringeOptions{}, nil, 59, false},
 		{"azure", &structs.SyringeOptions{}, nil, 2, false},
+		{"bitbucket", &structs.SyringeOptions{}, nil, 3, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setupEnv(t, tt.name)
-			envMap, _ := utils.ReadEnvironment()
-			s, err := NewSyringe(envMap, tt.opts)
+			configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", tt.name)})
+			if err != nil {
+				log.Fatalf("Failed to read config file")
+				return
+			}
+			s, err := NewSyringe(configData, tt.opts)
+
 			err = s.ListProjects()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListProjects() error = %v, wantErr %v", err, tt.wantErr)
@@ -95,11 +86,9 @@ func TestSyringe_ListProjects(t *testing.T) {
 }
 
 func TestSyringe_GetLockfilesByProject(t *testing.T) {
-
 	type args struct {
 		projectId int64
 	}
-
 	tests := []struct {
 		name    string
 		args    args
@@ -108,15 +97,19 @@ func TestSyringe_GetLockfilesByProject(t *testing.T) {
 		wantLen int
 		wantErr bool
 	}{
-		{"gitlab", args{38265422}, gitlabOpts, &structs.SyringeProject{}, 4, false},
-		{"github", args{325083799}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 1, false},
-		{"azure", args{1249448610}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 4, false},
+		{"gitlab", args{38265422}, gitlabOpts, &structs.SyringeProject{}, 4, false},                     // gitlab: testProject98 - 4
+		{"github", args{325083799}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 1, false},     // github: phylum-ui - 1
+		{"azure", args{1249448610}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 4, false},     // azure: test-project-1 - 4
+		{"bitbucket", args{3407435279}, &structs.SyringeOptions{}, &structs.SyringeProject{}, 2, false}, // bitbucket cloud project: test-repo-1 - 2
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setupEnv(t, tt.name)
-			envMap, _ := utils.ReadEnvironment()
-			s, err := NewSyringe(envMap, tt.opts)
+			configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", tt.name)})
+			if err != nil {
+				log.Fatalf("Failed to read config file")
+				return
+			}
+			s, err := NewSyringe(configData, tt.opts)
 			if err = s.ListProjects(); err != nil {
 				fmt.Printf("failed to list projects: %v\n", err)
 			}
@@ -131,7 +124,7 @@ func TestSyringe_GetLockfilesByProject(t *testing.T) {
 			}
 
 			if len(got.Lockfiles) != tt.wantLen {
-				t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", len(got.Lockfiles), tt.want)
+				t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", len(got.Lockfiles), tt.wantLen)
 			}
 		})
 	}
@@ -139,9 +132,12 @@ func TestSyringe_GetLockfilesByProject(t *testing.T) {
 
 func TestSyringe_PhylumGetProjectMap(t *testing.T) {
 
-	setupEnv(t, "gitlab")
-	envMap, _ := utils.ReadEnvironment()
-	s, err := NewSyringe(envMap, gitlabOpts)
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", "github")})
+	if err != nil {
+		log.Fatalf("Failed to read config file")
+		return
+	}
+	s, err := NewSyringe(configData, &structs.SyringeOptions{})
 	if err != nil {
 		fmt.Printf("failed to create syringe: %v\n", err)
 	}
@@ -294,22 +290,28 @@ func TestSyringe_PhylumGetProjectMap(t *testing.T) {
 
 func TestSyringe_GetAllLockfiles(t *testing.T) {
 
+	wantType := make([]*structs.SyringeProject, 0)
+
 	tests := []struct {
 		name    string
 		opts    *structs.SyringeOptions
-		want    *structs.SyringeProject
+		want    *[]*structs.SyringeProject
 		wantLen int
 		wantErr bool
 	}{
-		{"gitlab", gitlabOpts, &structs.SyringeProject{}, 4, false},
-		{"github", &structs.SyringeOptions{}, &structs.SyringeProject{}, 57, false},
-		{"azure", &structs.SyringeOptions{}, &structs.SyringeProject{}, 4, false},
+		{"gitlab", gitlabOpts, &wantType, 824, false},
+		{"github", &structs.SyringeOptions{}, &wantType, 88, false},
+		{"azure", &structs.SyringeOptions{}, &wantType, 4, false},
+		{"bitbucket", &structs.SyringeOptions{}, &wantType, 6, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setupEnv(t, tt.name)
-			envMap, _ := utils.ReadEnvironment()
-			s, err := NewSyringe(envMap, tt.opts)
+			configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", tt.name)})
+			if err != nil {
+				log.Fatalf("Failed to read config file")
+				return
+			}
+			s, err := NewSyringe(configData, tt.opts)
 			if err = s.ListProjects(); err != nil {
 				fmt.Printf("failed to list projects: %v\n", err)
 			}
@@ -319,13 +321,17 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 				return
 			}
 
-			// if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
-			//	t.Errorf("GetLockfilesByProject() got = %v, want %v", s.Projects, tt.want)
-			// }
+			if reflect.TypeOf(s.Projects) != reflect.TypeOf(tt.want) {
+				t.Errorf("GetLockfilesByProject() got = %v, want %v", s.Projects, tt.want)
+			}
 
-			// if len(got.Lockfiles) != tt.wantLen {
-			//	t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", len(got.Lockfiles), tt.want)
-			// }
+			var gotLen int = 0
+			for _, proj := range *s.Projects {
+				gotLen += len(proj.Lockfiles)
+			}
+			if gotLen != tt.wantLen {
+				t.Errorf("GetLockfilesByProject() wantLen(got) = %v, want %v", gotLen, tt.wantLen)
+			}
 		})
 	}
 }
@@ -391,3 +397,50 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 // 		})
 // 	}
 // }
+
+func TestSyringe_PhylumGetProjects(t *testing.T) {
+	configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", "github")})
+	if err != nil {
+		log.Fatalf("Failed to read config file")
+		return
+	}
+	s, err := NewSyringe(configData, &structs.SyringeOptions{})
+	if err != nil {
+		fmt.Printf("failed to create syringe: %v\n", err)
+	}
+	err = s.ListProjects()
+	if err != nil {
+		fmt.Printf("failed to ListProjects: %v\n", err)
+	}
+	for k, _ := range s.ProjectsMap {
+		_, err = s.GetLockfilesByProject(k)
+		if err != nil {
+			fmt.Printf("failed to GetLockfilesByProject: %v\n", err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		opts    *structs.SyringeOptions
+		want    *map[string]structs.PhylumProject
+		wantLen int
+		wantErr bool
+	}{
+		{"gitlab", &structs.SyringeOptions{}, &map[string]structs.PhylumProject{}, 77, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.PhylumGetProjects()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PhylumGetProjects() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if reflect.TypeOf(got) != reflect.TypeOf(tt.want) {
+				t.Errorf("PhylumGetProjects() got = %v, want %v", got, tt.want)
+			}
+
+			_ = s.IntegratePhylumProjectList(got)
+			fmt.Println("test")
+		})
+	}
+}

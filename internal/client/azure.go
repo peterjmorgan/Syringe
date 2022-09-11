@@ -32,7 +32,7 @@ type AzureSubClient struct {
 	GitClient   git.Client
 }
 
-//func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *AzureClient {
+// func NewAzureClient(envMap map[string]string, opts *structs.SyringeOptions) *AzureClient {
 func NewAzureClient(configData *structs.ConfigThing, opts *structs.SyringeOptions) *AzureClient {
 
 	// TODO: handle alternate urls to ADO
@@ -41,12 +41,18 @@ func NewAzureClient(configData *structs.ConfigThing, opts *structs.SyringeOption
 	conn := azuredevops.NewPatConnection(configData.Associated["azureOrg"], configData.VcsToken)
 	ctx := context.Background()
 	coreClient, err := core.NewClient(ctx, conn)
-	buildClient, err := build.NewClient(ctx, conn)
-	gitClient, err := git.NewClient(ctx, conn)
-
 	if err != nil {
-		// handle
+		log.Fatalf("NewAzureClient: Failed to create coreClient: %v\n", err)
 	}
+	buildClient, err := build.NewClient(ctx, conn)
+	if err != nil {
+		log.Fatalf("NewAzureClient: Failed to create buildClient: %v\n", err)
+	}
+	gitClient, err := git.NewClient(ctx, conn)
+	if err != nil {
+		log.Fatalf("NewAzureClient: Failed to create gitClient: %v\n", err)
+	}
+
 	return &AzureClient{
 		Clients: &AzureSubClient{
 			CoreClient:  coreClient,
