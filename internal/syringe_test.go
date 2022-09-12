@@ -398,6 +398,7 @@ func TestSyringe_GetAllLockfiles(t *testing.T) {
 // 	}
 // }
 
+// TODO: fix this test: I don't need to get VCS information to test PhylumGetProjects
 func TestSyringe_PhylumGetProjects(t *testing.T) {
 	configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", "github")})
 	if err != nil {
@@ -444,3 +445,49 @@ func TestSyringe_PhylumGetProjects(t *testing.T) {
 		})
 	}
 }
+
+// TODO: fix this test
+//func TestSyringe_PhylumCreateProjectAPI(t *testing.T) {
+//	configData, err := utils.ReadConfigFile(&structs.TestConfigData{Filename: fmt.Sprintf("syringe_config_%s.yaml", "github")})
+//	if err != nil {
+//		log.Fatalf("Failed to read config file")
+//		return
+//	}
+//	s, err := NewSyringe(configData, &structs.SyringeOptions{})
+//	if err != nil {
+//		fmt.Printf("failed to create syringe: %v\n", err)
+//	}
+//	type args struct {
+//		projectName string
+//		projects    chan<- *structs.PhylumProject
+//	}
+//
+//	chRecv := make(chan *structs.PhylumProject, 1)
+//	var response *structs.PhylumProject
+//
+//	tests := []struct {
+//		name    string
+//		args    args
+//		want    *structs.PhylumProject
+//		wantErr bool
+//	}{
+//		{"one", args{"syringetest123456", chRecv}, &structs.PhylumProject{}, false},
+//	}
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			if err := s.PhylumCreateProjectAPI(tt.args.projectName, tt.args.projects); (err != nil) != tt.wantErr {
+//				t.Errorf("PhylumCreateProjectAPI() error = %v, wantErr %v", err, tt.wantErr)
+//			}
+//
+//			go func() {
+//				for resp := range chRecv {
+//					response = resp
+//				}
+//				close(chRecv)
+//			}()
+//			if reflect.TypeOf(response) != reflect.TypeOf(tt.want) {
+//				t.Errorf("PhylumCreateProjectAPI() error = %v, want %v", reflect.TypeOf(response), reflect.TypeOf(tt.want))
+//			}
+//		})
+//	}
+//}
