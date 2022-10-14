@@ -1,11 +1,12 @@
 package utils
 
 import (
-	"github.com/joho/godotenv"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 )
 
 func setupEnv(t *testing.T, envVarName string) func(t *testing.T) {
@@ -33,8 +34,8 @@ func TestReadEnvironment(t *testing.T) {
 	}{
 		{"one", map[string]string{
 			"vcs":         "gitlab",
-			"vcsToken":    "***REMOVED***",
-			"phylumToken": "***REMOVED***",
+			"vcsToken":    "",
+			"phylumToken": "",
 			"phylumGroup": "petetest1",
 		}, false},
 	}
