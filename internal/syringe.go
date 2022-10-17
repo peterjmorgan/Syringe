@@ -56,12 +56,17 @@ func NewSyringe(configData *structs.ConfigThing, opts *structs.SyringeOptions) (
 	client, err := NewClient(configData.VcsType, configData, opts)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v\n", err)
+		return nil, err
 	}
 
 	defaultProjects := make([]*structs.SyringeProject, 0)
 	defaultProjectMap := make(map[int64]*structs.SyringeProject, 0)
 
-	phylumClient := phylum.NewClient()
+	phylumClient, err := phylum.NewClient(&phylum.ClientOptions{})
+	if err != nil {
+		log.Fatalf("Failed to create Phylum Client: %v\n", err)
+		return nil, err
+	}
 
 	return &Syringe{
 		Client:          client,
